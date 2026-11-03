@@ -83,7 +83,10 @@ export function MatchesTable({ rows }: { rows: MatchListRow[] }) {
                 <TableCell>{formatMatchDate(project.match_date)}</TableCell>
                 <TableCell>{project.opponent ?? "—"}</TableCell>
                 <TableCell>
-                  <Badge className={toneClass[view.tone]}>{view.label}</Badge>
+                  <Badge className={toneClass[view.tone]}>
+                    {view.label}
+                    {video?.status === "processing" && video.progress != null ? ` ${video.progress}%` : ""}
+                  </Badge>
                 </TableCell>
                 <TableCell>{video ? clipCount : "—"}</TableCell>
                 <TableCell>

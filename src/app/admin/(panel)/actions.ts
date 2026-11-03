@@ -82,6 +82,8 @@ export async function reprocessMatch(videoId: string): Promise<void> {
     highlight_reel_path: null,
     is_published: false,
     published_at: null,
+    stage: null,
+    progress: null,
   });
   revalidatePath(`/${found.project.team}`);
   revalidatePath("/admin");

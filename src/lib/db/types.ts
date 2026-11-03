@@ -36,6 +36,9 @@ export type Video = {
   source_deleted_at: string | null;
   /** YouTube watch URL when the match was imported from a link. */
   source_url: string | null;
+  /** Worker progress while status is processing. */
+  stage: string | null;
+  progress: number | null;
   created_at: string;
 };
 

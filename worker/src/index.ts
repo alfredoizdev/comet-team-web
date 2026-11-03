@@ -82,7 +82,7 @@ async function poll() {
           await processVideo(video.id, video);
         } catch (err) {
           console.error(`Error processing ${video.id}:`, message(err));
-          await supabase.from("videos").update({ status: "error", error_message: message(err) }).eq("id", video.id);
+          await supabase.from("videos").update({ status: "error", error_message: message(err), stage: null }).eq("id", video.id);
         }
       }
       await processCustomClips();

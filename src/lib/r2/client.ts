@@ -124,11 +124,25 @@ export async function deleteObjects(keys: string[]): Promise<void> {
   );
 }
 
-/** Streams an object to `destPath` (works for files larger than 2 GB). */
-export async function downloadToFile(key: string, destPath: string): Promise<void> {
+/** Streams an object to `destPath` (works for files larger than 2 GB). `onProgress` gets 0–100. */
+export async function downloadToFile(key: string, destPath: string, onProgress?: (pct: number) => void): Promise<void> {
   const res = await getR2().send(new GetObjectCommand({ Bucket: bucket(), Key: key }));
   if (!res.Body) throw new Error(`Empty body downloading ${key}`);
-  await pipeline(res.Body as Readable, createWriteStream(destPath));
+  const total = res.ContentLength ?? 0;
+  const body = res.Body as Readable;
+  if (onProgress && total > 0) {
+    let seen = 0;
+    let lastPct = -1;
+    body.on("data", (chunk: Buffer) => {
+      seen += chunk.length;
+      const pct = Math.min(100, Math.floor((seen / total) * 100));
+      if (pct !== lastPct) {
+        lastPct = pct;
+        onProgress(pct);
+      }
+    });
+  }
+  await pipeline(body, createWriteStream(destPath));
 }
 
 export async function uploadFile(key: string, filePath: string, contentType: string): Promise<void> {
