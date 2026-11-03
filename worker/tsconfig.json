@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "src",
+    "../src/lib/r2",
+    "../src/lib/db"
+  ],
+  "exclude": [
+    "src/__tests__",
+    "../src/lib/**/__tests__"
+  ]
+}
