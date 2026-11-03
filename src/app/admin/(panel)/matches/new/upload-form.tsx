@@ -48,17 +48,12 @@ function putWithProgress(url: string, body: Blob, contentType: string | null, on
   });
 }
 
-function isRedirect(err: unknown): boolean {
-  return err instanceof Error && err.message.includes("NEXT_REDIRECT");
-}
-
-/** completeUpload redirects on success (throws NEXT_REDIRECT); retry once on a real failure. */
-async function completeWithRetry(input: Parameters<typeof completeUpload>[0]): Promise<void> {
+/** Retry completeUpload once on a transient failure. */
+async function completeWithRetry(input: Parameters<typeof completeUpload>[0]): Promise<{ projectId: string }> {
   try {
-    await completeUpload(input);
-  } catch (err) {
-    if (isRedirect(err)) throw err;
-    await completeUpload(input);
+    return await completeUpload(input);
+  } catch {
+    return await completeUpload(input);
   }
 }
 
@@ -137,9 +132,9 @@ export function UploadForm({ role, team, defaultTeam, opponents }: Props) {
       let projectId: string | null = null;
       try {
         ({ id: projectId } = await createMatch(matchInput));
-        await submitYouTube({ projectId, url: youtubeUrl });
+        const done = await submitYouTube({ projectId, url: youtubeUrl });
+        router.push(`/admin/matches/${done.projectId}`);
       } catch (err) {
-        if (isRedirect(err)) throw err;
         if (projectId) void deleteMatch(projectId).catch(() => undefined);
         toast.error(err instanceof Error ? err.message : "Could not add the YouTube video.");
         setBusy(false);
@@ -160,7 +155,8 @@ export function UploadForm({ role, team, defaultTeam, opponents }: Props) {
       if (signed.mode === "single") {
         const { url, videoId, key } = signed;
         await withRetry(() => putWithProgress(url, file, file.type || null, report));
-        await completeWithRetry({ projectId, videoId, key });
+        const done = await completeWithRetry({ projectId, videoId, key });
+        router.push(`/admin/matches/${done.projectId}`);
       } else {
         const { partSize, partUrls } = signed;
         const parts: { ETag: string; PartNumber: number }[] = [];
@@ -173,11 +169,10 @@ export function UploadForm({ role, team, defaultTeam, opponents }: Props) {
           done += chunk.size;
           report(done);
         }
-        await completeWithRetry({ projectId, videoId: signed.videoId, key: signed.key, uploadId: signed.uploadId, parts });
+        const result = await completeWithRetry({ projectId, videoId: signed.videoId, key: signed.key, uploadId: signed.uploadId, parts });
+        router.push(`/admin/matches/${result.projectId}`);
       }
     } catch (err) {
-      // completeUpload redirects by throwing; anything else is a real failure.
-      if (isRedirect(err)) throw err;
       // First completeUpload succeeded but its response was lost: the match is fine, go to it.
       if (projectId && err instanceof Error && err.message.includes("already has a video")) {
         router.push(`/admin/matches/${projectId}`);

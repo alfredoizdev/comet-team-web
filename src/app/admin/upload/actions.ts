@@ -2,7 +2,6 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { assertCanManage, requireMember, type Member } from "@/lib/auth/members";
 import {
   abortMultipart,
@@ -63,7 +62,7 @@ export async function completeUpload(input: {
   key: string;
   uploadId?: string;
   parts?: UploadedPart[];
-}): Promise<void> {
+}): Promise<{ projectId: string }> {
   const m = await requireMember();
   assertOwnKey(m, input.key);
   const project = await repo.getProject(input.projectId);
@@ -86,7 +85,7 @@ export async function completeUpload(input: {
     throw err;
   }
   revalidatePath("/admin");
-  redirect(`/admin/matches/${project.id}`);
+  return { projectId: project.id };
 }
 
 export async function abortUpload(input: { key: string; uploadId?: string }): Promise<void> {
@@ -108,7 +107,7 @@ export async function abortUpload(input: { key: string; uploadId?: string }): Pr
 }
 
 /** Attach a YouTube video to a match; the worker downloads it with yt-dlp and processes it like an upload. */
-export async function submitYouTube(input: { projectId: string; url: string }): Promise<void> {
+export async function submitYouTube(input: { projectId: string; url: string }): Promise<{ projectId: string }> {
   const m = await requireMember();
   const project = await repo.getProject(input.projectId);
   if (!project) throw new Error("Match not found");
@@ -125,5 +124,5 @@ export async function submitYouTube(input: { projectId: string; url: string }): 
     source_url: parsed.url,
   });
   revalidatePath("/admin");
-  redirect(`/admin/matches/${project.id}`);
+  return { projectId: project.id };
 }
