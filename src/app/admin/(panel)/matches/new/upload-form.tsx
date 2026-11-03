@@ -96,6 +96,16 @@ export function UploadForm({ role, team, defaultTeam, opponents }: Props) {
   }, [busy]);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  /** Reset the form and go to the match page. */
+  function finish(projectId: string) {
+    setBusy(false);
+    setSent(0);
+    setTotal(0);
+    setRate(0);
+    pickFile(null);
+    router.push(`/admin/matches/${projectId}`);
+  }
+
   function pickFile(f: File | null) {
     setFile(f);
     if (!f && fileRef.current) fileRef.current.value = "";
@@ -133,7 +143,7 @@ export function UploadForm({ role, team, defaultTeam, opponents }: Props) {
       try {
         ({ id: projectId } = await createMatch(matchInput));
         const done = await submitYouTube({ projectId, url: youtubeUrl });
-        router.push(`/admin/matches/${done.projectId}`);
+        finish(done.projectId);
       } catch (err) {
         if (projectId) void deleteMatch(projectId).catch(() => undefined);
         toast.error(err instanceof Error ? err.message : "Could not add the YouTube video.");
@@ -156,7 +166,7 @@ export function UploadForm({ role, team, defaultTeam, opponents }: Props) {
         const { url, videoId, key } = signed;
         await withRetry(() => putWithProgress(url, file, file.type || null, report));
         const done = await completeWithRetry({ projectId, videoId, key });
-        router.push(`/admin/matches/${done.projectId}`);
+        finish(done.projectId);
       } else {
         const { partSize, partUrls } = signed;
         const parts: { ETag: string; PartNumber: number }[] = [];
@@ -170,12 +180,12 @@ export function UploadForm({ role, team, defaultTeam, opponents }: Props) {
           report(done);
         }
         const result = await completeWithRetry({ projectId, videoId: signed.videoId, key: signed.key, uploadId: signed.uploadId, parts });
-        router.push(`/admin/matches/${result.projectId}`);
+        finish(result.projectId);
       }
     } catch (err) {
       // First completeUpload succeeded but its response was lost: the match is fine, go to it.
       if (projectId && err instanceof Error && err.message.includes("already has a video")) {
-        router.push(`/admin/matches/${projectId}`);
+        finish(projectId);
         return;
       }
       if (signed) {
