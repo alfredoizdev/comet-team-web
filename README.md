@@ -1,7 +1,7 @@
 # Comets Web
 
 Public site for Comet SC (Girls Team / Boys Team) with an admin panel where
-coaches upload full matches, a local worker cuts highlight clips and a reel from the
+coaches upload full matches (up to 20 GB), a local worker cuts highlight clips and a reel from the
 loudest moments (audio peaks, FFmpeg), and parents watch what gets published.
 
 Stack: Next.js 16 (App Router) · Tailwind 4 · shadcn/ui · Supabase (Postgres + Auth,

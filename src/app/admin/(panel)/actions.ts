@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { assertCanManage, requireMember } from "@/lib/auth/members";
 import type { Team } from "@/lib/db/types";
 import { reelKey } from "@/lib/r2/keys";
-import { deleteObjects } from "@/lib/r2/client";
+import { deleteObjects, presignGet } from "@/lib/r2/client";
 import * as repo from "@/lib/videos/repo";
 import { describeVideo } from "@/lib/videos/status";
 
@@ -18,20 +18,35 @@ export async function createMatch(input: {
   assertCanManage(m, input.team);
   const title = input.title.trim();
   if (!title) throw new Error("Title is required");
+  const opponent = input.opponent?.trim() || null;
   const project = await repo.insertProject({
     user_id: m.userId,
     title,
     team: input.team,
     match_date: input.matchDate || null,
-    opponent: input.opponent?.trim() || null,
+    opponent,
   });
+  if (opponent) await repo.rememberOpponent(opponent);
   revalidatePath("/admin");
   return { id: project.id };
 }
 
-export async function listMatches(): Promise<repo.MatchRow[]> {
+export async function listOpponents(): Promise<string[]> {
+  await requireMember();
+  return repo.listOpponentNames();
+}
+
+export type MatchListRow = repo.MatchRow & { thumbUrl: string | null };
+
+export async function listMatches(): Promise<MatchListRow[]> {
   const m = await requireMember();
-  return repo.listMatchRows(m.role === "admin" ? null : m.team);
+  const rows = await repo.listMatchRows(m.role === "admin" ? null : m.team);
+  return Promise.all(
+    rows.map(async (row) => ({
+      ...row,
+      thumbUrl: row.video?.highlight_reel_path ? await presignGet(row.video.highlight_reel_path) : null,
+    })),
+  );
 }
 
 export async function setPublished(videoId: string, published: boolean): Promise<void> {

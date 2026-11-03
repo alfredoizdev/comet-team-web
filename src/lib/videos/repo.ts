@@ -129,3 +129,17 @@ export async function listPublishedRows(team: Team): Promise<{ project: Project;
     return [{ project: project as Project, video: video as Video, clips }];
   });
 }
+
+export async function listOpponentNames(): Promise<string[]> {
+  const { data, error } = await db().from("opponents").select("name").order("name");
+  if (error) fail("listOpponentNames", error);
+  return ((data as { name: string }[]) ?? []).map((o) => o.name);
+}
+
+/** Remembers an opponent name (case-insensitive unique). */
+export async function rememberOpponent(name: string): Promise<void> {
+  const { error } = await db().from("opponents").upsert({ name }, { onConflict: "name", ignoreDuplicates: true });
+  // The unique index is on lower(name); PostgREST cannot target it, so a
+  // case-variant duplicate surfaces as 23505 and is safe to ignore.
+  if (error && error.code !== "23505") fail("rememberOpponent", error);
+}

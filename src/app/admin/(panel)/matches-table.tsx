@@ -18,9 +18,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatMatchDate } from "@/lib/videos/format";
-import type { MatchRow } from "@/lib/videos/repo";
+import { VideoPoster } from "@/components/video-poster";
 import { describeVideo, type VideoView } from "@/lib/videos/status";
-import { deleteMatch, setPublished } from "./actions";
+import { deleteMatch, setPublished, type MatchListRow } from "./actions";
 
 const toneClass: Record<VideoView["tone"], string> = {
   neutral: "bg-neutral-200 text-neutral-700",
@@ -29,7 +29,7 @@ const toneClass: Record<VideoView["tone"], string> = {
   error: "bg-red-100 text-red-800",
 };
 
-export function MatchesTable({ rows }: { rows: MatchRow[] }) {
+export function MatchesTable({ rows }: { rows: MatchListRow[] }) {
   const [pending, startTransition] = useTransition();
 
   function run(label: string, fn: () => Promise<void>) {
@@ -62,13 +62,22 @@ export function MatchesTable({ rows }: { rows: MatchRow[] }) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map(({ project, video, clipCount }) => {
+          {rows.map(({ project, video, clipCount, thumbUrl }) => {
             const view = describeVideo(video);
             return (
               <TableRow key={project.id}>
                 <TableCell className="font-medium">
-                  <Link href={`/admin/matches/${project.id}`} className="hover:underline">
-                    {project.title}
+                  <Link href={`/admin/matches/${project.id}`} className="flex items-center gap-3 hover:underline">
+                    <span className="relative block aspect-video w-28 shrink-0 overflow-hidden rounded-md bg-neutral-200">
+                      {thumbUrl ? (
+                        <VideoPoster src={thumbUrl} muted preload="metadata" playsInline className="size-full object-cover" />
+                      ) : (
+                        <span className="absolute inset-0 flex items-center justify-center text-[10px] font-medium uppercase text-neutral-500">
+                          {video ? "Processing" : "No video"}
+                        </span>
+                      )}
+                    </span>
+                    <span>{project.title}</span>
                   </Link>
                 </TableCell>
                 <TableCell>{formatMatchDate(project.match_date)}</TableCell>

@@ -8,7 +8,7 @@ export type VideoStatus = "uploaded" | "processing" | "done" | "error";
 export const ALLOWED_VIDEO_EXTS = ["mp4", "mov", "avi", "webm"] as const;
 export type VideoExt = (typeof ALLOWED_VIDEO_EXTS)[number];
 
-export const MAX_VIDEO_BYTES = 5 * 1024 ** 3;
+export const MAX_VIDEO_BYTES = 20 * 1024 ** 3;
 export const MULTIPART_THRESHOLD = 100 * 1024 ** 2;
 export const PART_SIZE = 50 * 1024 ** 2;
 export const SIGNED_URL_TTL_SECONDS = 4 * 3600;
