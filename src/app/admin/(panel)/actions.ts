@@ -26,7 +26,10 @@ export async function createMatch(input: {
     match_date: input.matchDate || null,
     opponent,
   });
-  if (opponent) await repo.rememberOpponent(opponent);
+  if (opponent) {
+    // The opponent list is a convenience: never let it break match creation.
+    await repo.rememberOpponent(opponent).catch((err) => console.error("rememberOpponent:", err));
+  }
   revalidatePath("/admin");
   return { id: project.id };
 }

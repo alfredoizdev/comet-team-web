@@ -138,8 +138,10 @@ export async function listOpponentNames(): Promise<string[]> {
 
 /** Remembers an opponent name (case-insensitive unique). */
 export async function rememberOpponent(name: string): Promise<void> {
-  const { error } = await db().from("opponents").upsert({ name }, { onConflict: "name", ignoreDuplicates: true });
-  // The unique index is on lower(name); PostgREST cannot target it, so a
-  // case-variant duplicate surfaces as 23505 and is safe to ignore.
-  if (error && error.code !== "23505") fail("rememberOpponent", error);
+  const { data, error } = await db().from("opponents").select("id").ilike("name", name).limit(1);
+  if (error) fail("rememberOpponent", error);
+  if (data && data.length > 0) return;
+  const { error: insertError } = await db().from("opponents").insert({ name });
+  // A concurrent insert of the same name trips the lower(name) unique index: fine.
+  if (insertError && insertError.code !== "23505") fail("rememberOpponent", insertError);
 }
