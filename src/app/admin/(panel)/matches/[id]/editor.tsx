@@ -268,7 +268,90 @@ export function Editor({ state, team }: { state: MatchState; team: Team }) {
     }
   }
 
-  if (sources.length === 0) return null;
+  const clipsPanel = (
+    <>
+    {clips.length > 0 ? (
+      <div className="shrink-0 border-t bg-white md:w-80 md:border-l md:border-t-0">
+        <div className="border-b px-4 py-3">
+          <h3 className="text-sm font-semibold">Clips</h3>
+          <p className="text-xs text-neutral-500">{clips.length} moments</p>
+        </div>
+        <div className="flex gap-3 overflow-x-auto px-4 py-3 md:max-h-[560px] md:flex-col md:overflow-y-auto">
+          {clips.map((clip, i) => {
+            const url = clipUrls[clip.id];
+            const range = clipRange(clip);
+            const current = !!range && currentTime >= range[0] && currentTime <= range[1];
+            return (
+              <div
+                key={clip.id}
+                className={`group relative w-36 shrink-0 cursor-pointer overflow-hidden rounded-lg border transition md:flex md:w-auto md:gap-3 md:p-2 ${current ? `${team === "girls" ? "border-girls" : "border-boys"} ring-2 ring-neutral-200` : "border-neutral-200"}`}
+                onClick={() => jumpToClip(clip)}
+              >
+                <div className="relative aspect-video bg-neutral-900 md:w-28 md:shrink-0 md:rounded-md">
+                  {url ? (
+                    <video src={url} className="size-full object-cover" muted preload="metadata" />
+                  ) : (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-neutral-800">
+                      <Loader2 className="size-4 animate-spin text-white/70" />
+                      <span className="text-[9px] text-neutral-300">{clip.score < 0 ? "Failed" : "Processing…"}</span>
+                    </div>
+                  )}
+                  <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1 text-[10px] text-white">{formatTimeFull(clip.start_time)}</span>
+                </div>
+                <div className="flex min-w-0 flex-1 items-start justify-between px-2 py-1.5 md:px-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-medium md:text-sm">{i === 0 ? "Best moment" : `Moment #${i + 1}`}</p>
+                    <p className="text-[10px] text-neutral-500 md:text-xs">
+                      {formatTimeFull(clip.start_time)} – {formatTimeFull(clip.end_time)}
+                    </p>
+                    <div className="mt-1.5 hidden md:block" onClick={(e) => e.stopPropagation()}>
+                      <NameCombobox
+                        value={clip.player_name ?? ""}
+                        onChange={(name) => void handlePlayer(clip, name)}
+                        options={state.players}
+                        placeholder="Player (optional)"
+                        searchPlaceholder="Search players…"
+                        emptyLabel="No players saved yet. Type a name to add one."
+                        clearLabel="No player"
+                        size="sm"
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    {clip.player_name ? <p className="mt-1 text-[10px] font-medium text-neutral-700 md:hidden">{clip.player_name}</p> : null}
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Delete clip"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void handleDeleteClip(clip);
+                    }}
+                    className="shrink-0 rounded p-1 text-neutral-400 transition hover:bg-red-50 hover:text-red-500"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    ) : null}
+    </>
+  );
+  if (sources.length === 0) {
+    // No playable source right now (e.g. the reel is being rebuilt after a clip was deleted
+    // and the full match was already removed): keep the clip list usable.
+    return (
+      <div className="flex flex-col overflow-hidden rounded-xl border bg-white">
+        <div className="flex items-center gap-2 border-b px-3 py-2">
+          <Loader2 className="size-4 animate-spin text-neutral-500" aria-hidden="true" />
+          <span className="text-sm text-neutral-600">The highlight reel is being rebuilt. You can still rename or delete clips.</span>
+        </div>
+        {clipsPanel}
+      </div>
+    );
+  }
 
   const trimDuration = trimEnd - trimStart;
   const pct = (t: number) => (videoDuration ? (t / videoDuration) * 100 * zoom : 0);
@@ -478,74 +561,7 @@ export function Editor({ state, team }: { state: MatchState; team: Team }) {
           </div>
         </div>
 
-        {/* Clips list */}
-        {clips.length > 0 ? (
-          <div className="shrink-0 border-t bg-white md:w-80 md:border-l md:border-t-0">
-            <div className="border-b px-4 py-3">
-              <h3 className="text-sm font-semibold">Clips</h3>
-              <p className="text-xs text-neutral-500">{clips.length} moments</p>
-            </div>
-            <div className="flex gap-3 overflow-x-auto px-4 py-3 md:max-h-[560px] md:flex-col md:overflow-y-auto">
-              {clips.map((clip, i) => {
-                const url = clipUrls[clip.id];
-                const range = clipRange(clip);
-                const current = !!range && currentTime >= range[0] && currentTime <= range[1];
-                return (
-                  <div
-                    key={clip.id}
-                    className={`group relative w-36 shrink-0 cursor-pointer overflow-hidden rounded-lg border transition md:flex md:w-auto md:gap-3 md:p-2 ${current ? `${team === "girls" ? "border-girls" : "border-boys"} ring-2 ring-neutral-200` : "border-neutral-200"}`}
-                    onClick={() => jumpToClip(clip)}
-                  >
-                    <div className="relative aspect-video bg-neutral-900 md:w-28 md:shrink-0 md:rounded-md">
-                      {url ? (
-                        <video src={url} className="size-full object-cover" muted preload="metadata" />
-                      ) : (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-neutral-800">
-                          <Loader2 className="size-4 animate-spin text-white/70" />
-                          <span className="text-[9px] text-neutral-300">{clip.score < 0 ? "Failed" : "Processing…"}</span>
-                        </div>
-                      )}
-                      <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1 text-[10px] text-white">{formatTimeFull(clip.start_time)}</span>
-                    </div>
-                    <div className="flex min-w-0 flex-1 items-start justify-between px-2 py-1.5 md:px-0">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-medium md:text-sm">{i === 0 ? "Best moment" : `Moment #${i + 1}`}</p>
-                        <p className="text-[10px] text-neutral-500 md:text-xs">
-                          {formatTimeFull(clip.start_time)} – {formatTimeFull(clip.end_time)}
-                        </p>
-                        <div className="mt-1.5 hidden md:block" onClick={(e) => e.stopPropagation()}>
-                          <NameCombobox
-                            value={clip.player_name ?? ""}
-                            onChange={(name) => void handlePlayer(clip, name)}
-                            options={state.players}
-                            placeholder="Player (optional)"
-                            searchPlaceholder="Search players…"
-                            emptyLabel="No players saved yet. Type a name to add one."
-                            clearLabel="No player"
-                            size="sm"
-                            className="h-7 text-xs"
-                          />
-                        </div>
-                        {clip.player_name ? <p className="mt-1 text-[10px] font-medium text-neutral-700 md:hidden">{clip.player_name}</p> : null}
-                      </div>
-                      <button
-                        type="button"
-                        aria-label="Delete clip"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void handleDeleteClip(clip);
-                        }}
-                        className="shrink-0 rounded p-1 text-neutral-400 transition hover:bg-red-50 hover:text-red-500"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ) : null}
+        {clipsPanel}
       </div>
     </div>
   );
