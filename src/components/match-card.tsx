@@ -38,9 +38,9 @@ export function MatchCard({ match, accentBg }: { match: PublicMatch; accentBg: s
       </header>
       {match.fullMatch ? (
         <Tabs defaultValue="highlights" className="gap-4">
-          <TabsList variant="line" className="h-10 gap-4 border-b border-[#ececf0] pb-1">
-            <TabsTrigger value="highlights" className="px-1 text-base">Highlights</TabsTrigger>
-            <TabsTrigger value="full" className="px-1 text-base">Full match</TabsTrigger>
+          <TabsList className="h-12 gap-1 rounded-full bg-[#ececf0] p-1">
+            <TabsTrigger value="highlights" className="h-10 rounded-full px-5 text-base font-semibold data-active:bg-white data-active:shadow-sm">Highlights</TabsTrigger>
+            <TabsTrigger value="full" className="h-10 rounded-full px-5 text-base font-semibold data-active:bg-white data-active:shadow-sm">Full match</TabsTrigger>
           </TabsList>
           <TabsContent value="highlights">{highlights}</TabsContent>
           <TabsContent value="full">
