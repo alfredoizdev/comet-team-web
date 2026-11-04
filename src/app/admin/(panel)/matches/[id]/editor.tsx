@@ -4,7 +4,7 @@
 // overlays and AI. Data comes from server actions (no browser Supabase access).
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Loader2, MapPin, Pause, Play, Plus, Scissors, SkipBack, SkipForward, Trash2, ZoomIn, ZoomOut } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, MapPin, Maximize2, Minimize2, Pause, Play, Plus, Scissors, SkipBack, SkipForward, Trash2, ZoomIn, ZoomOut } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -89,6 +89,22 @@ export function Editor({ state, team }: { state: MatchState; team: Team }) {
   const [mediaDuration, setMediaDuration] = useState(0);
   const [jumpInput, setJumpInput] = useState("");
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const [maximized, setMaximized] = useState(false);
+
+  // Fullscreen editor: Esc leaves it, and the body does not scroll behind it.
+  useEffect(() => {
+    if (!maximized) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMaximized(false);
+    };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [maximized]);
 
   const activeSource = sources[sourceIndex] ?? sources[0];
   const videoUrl = activeSource?.kind === "video" ? activeSource.url : "";
@@ -279,12 +295,12 @@ export function Editor({ state, team }: { state: MatchState; team: Team }) {
   const clipsPanel = (
     <>
     {clips.length > 0 ? (
-      <div className="shrink-0 border-t bg-white md:w-80 md:border-l md:border-t-0">
+      <div className={`shrink-0 border-t bg-white md:border-l md:border-t-0 ${maximized ? "md:flex md:min-h-0 md:w-96 md:flex-col" : "md:w-80"}`}>
         <div className="border-b px-4 py-3">
           <h3 className="text-sm font-semibold">Clips</h3>
           <p className="text-xs text-neutral-500">{clips.length} moments</p>
         </div>
-        <div className="flex gap-3 overflow-x-auto px-4 py-3 md:max-h-[560px] md:flex-col md:overflow-y-auto">
+        <div className={`flex gap-3 overflow-x-auto px-4 py-3 md:flex-col md:overflow-y-auto ${maximized ? "md:min-h-0 md:flex-1" : "md:max-h-[560px]"}`}>
           {clips.map((clip, i) => {
             const url = clipUrls[clip.id];
             const range = clipRange(clip);
@@ -379,10 +395,21 @@ export function Editor({ state, team }: { state: MatchState; team: Team }) {
   const cutTitle = !view.canCut ? "The full match was removed after processing, so new clips can't be cut." : undefined;
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-xl border bg-white">
+    <div className={maximized ? "fixed inset-0 z-50 flex flex-col bg-white" : "flex flex-col overflow-hidden rounded-xl border bg-white"}>
       {/* Top bar */}
       <div className="flex items-center gap-2 overflow-x-auto border-b px-3 py-2">
         <span className="shrink-0 text-sm font-semibold">Clip editor</span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="shrink-0"
+          onClick={() => setMaximized((m) => !m)}
+          aria-label={maximized ? "Exit fullscreen editor" : "Fullscreen editor"}
+        >
+          {maximized ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+          <span className="ml-1.5 hidden sm:inline">{maximized ? "Exit fullscreen" : "Fullscreen"}</span>
+        </Button>
         {sources.length > 1 ? (
           <div className="flex shrink-0 items-center gap-0.5 rounded-lg bg-neutral-100 p-0.5">
             {sources.map((src, i) => (
@@ -408,10 +435,10 @@ export function Editor({ state, team }: { state: MatchState; team: Team }) {
         </Badge>
       </div>
 
-      <div className="flex min-h-0 flex-col md:flex-row">
+      <div className={`flex min-h-0 flex-col md:flex-row ${maximized ? "flex-1" : ""}`}>
         {/* Video + controls */}
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="relative flex aspect-video items-center justify-center overflow-hidden bg-black">
+        <div className={`flex min-w-0 flex-1 flex-col ${maximized ? "min-h-0" : ""}`}>
+          <div className={`relative flex items-center justify-center overflow-hidden bg-black ${maximized ? "min-h-0 flex-1" : "aspect-video"}`}>
             {isYouTube && activeSource.kind === "youtube" ? (
               <YouTubePlayer
                 videoId={activeSource.youtubeId}
@@ -429,7 +456,7 @@ export function Editor({ state, team }: { state: MatchState; team: Team }) {
                 onClick={togglePlay}
               />
             ) : (
-              <video ref={videoRef} src={videoUrl} className="max-h-full max-w-full object-contain" onClick={togglePlay} preload="metadata" playsInline />
+              <video ref={videoRef} src={videoUrl} className={maximized ? "size-full object-contain" : "max-h-full max-w-full object-contain"} onClick={togglePlay} preload="metadata" playsInline />
             )}
             {!videoReady || buffering ? (
               <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/60 text-white">
