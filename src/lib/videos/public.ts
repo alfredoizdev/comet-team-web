@@ -1,6 +1,8 @@
 import type { ClipWithPlayer, Project, Team, Video } from "@/lib/db/types";
 import { presignGet } from "@/lib/r2/client";
+import { hlsMasterUrl } from "@/lib/videos/hls";
 import { listPublishedRows } from "@/lib/videos/repo";
+import { parseYouTubeUrl } from "@/lib/videos/youtube";
 
 const longDate = new Intl.DateTimeFormat("en-US", { day: "numeric", month: "long", year: "numeric" });
 
@@ -15,6 +17,8 @@ export function matchDateLabel(m: Pick<PublicMatch, "matchDate">): string | null
 }
 
 export type PublicClip = { id: string; startTime: number; url: string; player: string | null };
+/** Where the whole match plays from: YouTube embed, or the app's HLS playlist (served with signed segments). */
+export type PublicFullMatch = { kind: "youtube"; id: string } | { kind: "hls"; url: string };
 export type PublicMatch = {
   id: string;
   title: string;
@@ -25,7 +29,16 @@ export type PublicMatch = {
   reelUrl: string | null;
   reelRebuilding: boolean;
   clips: PublicClip[];
+  /** Null while an uploaded match has no streaming copy yet (or its master was never processed). */
+  fullMatch: PublicFullMatch | null;
 };
+
+function fullMatchOf(video: Video): PublicFullMatch | null {
+  const yt = video.source_url ? parseYouTubeUrl(video.source_url) : null;
+  if (yt) return { kind: "youtube", id: yt.id };
+  if (video.hls_path) return { kind: "hls", url: hlsMasterUrl(video.id) };
+  return null;
+}
 
 /** Pure selection: published + done videos, ready clips in time order, no signing. */
 export function selectPublishable(rows: { project: Project; video: Video; clips: ClipWithPlayer[] }[]): PublicMatch[] {
@@ -39,6 +52,7 @@ export function selectPublishable(rows: { project: Project; video: Video; clips:
       reelKey: video.highlight_reel_path,
       reelUrl: null,
       reelRebuilding: !video.highlight_reel_path,
+      fullMatch: fullMatchOf(video),
       clips: clips
         .filter((c) => c.score > 0)
         .sort((a, b) => a.start_time - b.start_time)

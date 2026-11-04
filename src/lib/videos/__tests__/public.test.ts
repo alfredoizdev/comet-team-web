@@ -28,3 +28,18 @@ describe("selectPublishable", () => {
     expect(selectPublishable([{ project, video: video({ is_published: false }), clips: [] }])).toEqual([]);
   });
 });
+
+describe("selectPublishable · fullMatch", () => {
+  it("points a YouTube match at its YouTube id", () => {
+    const out = selectPublishable([{ project, video: video({ source_url: "https://www.youtube.com/watch?v=abc123XYZ_-" }), clips: [clip("a", 2)] }]);
+    expect(out[0].fullMatch).toEqual({ kind: "youtube", id: "abc123XYZ_-" });
+  });
+  it("points an uploaded match with a streaming copy at the app's HLS playlist", () => {
+    const out = selectPublishable([{ project, video: video({ hls_path: "v1/hls" }), clips: [clip("a", 2)] }]);
+    expect(out[0].fullMatch).toEqual({ kind: "hls", url: "/api/hls/v1/master.m3u8" });
+  });
+  it("has no full match while the streaming copy is not ready", () => {
+    const out = selectPublishable([{ project, video: video({ hls_path: null }), clips: [clip("a", 2)] }]);
+    expect(out[0].fullMatch).toBeNull();
+  });
+});
