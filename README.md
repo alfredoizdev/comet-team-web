@@ -66,8 +66,8 @@ launchctl bootout gui/$(id -u)/com.cometsc.worker   # stop and uninstall the ser
 
 The worker polls Supabase every 5 s. It only processes while it is running, so a match
 uploaded while the Mac is off stays "Queued" until the worker starts. When a match is
-done it deletes the full video from R2 (set `DELETE_SOURCE_AFTER_PROCESSING=false` to
-keep originals; then custom clips can still be cut later).
+done the full video stays in R2 so coaches can cut new clips later (set
+`DELETE_SOURCE_AFTER_PROCESSING=true` to delete originals and save storage).
 
 ## Pages
 

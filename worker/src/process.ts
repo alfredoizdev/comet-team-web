@@ -1,6 +1,6 @@
 // Ported from PeakClip apps/worker/src/process.ts. Same FFmpeg pipeline;
 // storage calls go to Cloudflare R2 instead of Supabase Storage, and the
-// full match is deleted from R2 once clips + reel exist (see DELETE_SOURCE_AFTER_PROCESSING).
+// full match is kept in R2 so new clips can be cut later (set DELETE_SOURCE_AFTER_PROCESSING=true to drop it).
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -23,7 +23,7 @@ function getSupabase() {
 }
 
 function deleteSourceEnabled(): boolean {
-  return process.env.DELETE_SOURCE_AFTER_PROCESSING !== "false";
+  return process.env.DELETE_SOURCE_AFTER_PROCESSING === "true";
 }
 
 export type VideoSource = { file_path: string; source_url?: string | null };
@@ -248,7 +248,7 @@ export async function processVideo(videoId: string, source: VideoSource) {
     await supabase.from("videos").update({ status: "done", duration, highlight_reel_path: reel, stage: null, progress: 100 }).eq("id", videoId);
     console.log(`[${videoId}] Processing complete!`);
 
-    // 10. Free the R2 free tier: drop the full match now that clips + reel exist
+    // 10. Optional: drop the full match now that clips + reel exist (then no new clips can be cut)
     if (deleteSourceEnabled() && !source.source_url) {
       await deleteObjects([source.file_path]);
       await supabase.from("videos").update({ source_deleted_at: new Date().toISOString() }).eq("id", videoId);
