@@ -3,24 +3,23 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { CLUB_NAME, CREST_SRC, type Team } from "@/lib/teams";
 
-/** Colored header of the public team pages. `backHref`/`backLabel` point one level up. */
+/** White header of the public team pages with a stripe in the team color. `backHref`/`backLabel` point one level up. */
 export function TeamHeader({ team, backHref, backLabel }: { team: Team; backHref: string; backLabel: string }) {
   return (
-    <header className={`${team.bg} text-white`}>
-      <div className="mx-auto flex max-w-[1264px] items-center justify-between gap-6 px-5 py-4 sm:px-8 sm:py-5">
-        <Link href={`/${team.slug}`} className="flex items-center gap-4">
-          <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-white shadow-[0_4px_12px_rgba(0,0,0,0.12)]">
-            <Image src={CREST_SRC} alt={`${CLUB_NAME} crest`} width={46} height={46} className="size-[46px] object-contain" />
+    <header className={`border-t-4 ${team.border} border-b border-b-[#ececf0] bg-white`}>
+      <div className="mx-auto flex max-w-[1264px] items-center justify-between gap-4 px-5 py-3.5 sm:px-8 sm:py-5">
+        <Link href={`/${team.slug}`} className="flex min-w-0 items-center gap-3 sm:gap-4">
+          <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-white shadow-[0_4px_14px_rgba(0,0,0,0.14)] sm:size-14">
+            <Image src={CREST_SRC} alt={`${CLUB_NAME} crest`} width={46} height={46} className="size-10 object-contain sm:size-[46px]" />
           </span>
-          <span className="font-display whitespace-nowrap text-[32px] leading-none tracking-[0.02em] sm:text-[40px]">{team.shortName}</span>
+          <span className={`font-display truncate text-[28px] leading-none tracking-[0.02em] sm:text-[36px] ${team.text}`}>{team.shortName}</span>
         </Link>
         <Link
           href={backHref}
-          aria-label={backLabel}
-          className="inline-flex min-h-11 shrink-0 items-center gap-2 px-1 text-[15px] font-semibold sm:underline sm:underline-offset-4 hover:opacity-85"
+          className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-[#dcdce3] bg-white px-4 text-[15px] font-semibold transition hover:bg-[#f4f4f7] ${team.text}`}
         >
-          <ArrowLeft className="size-5 sm:size-4" aria-hidden="true" />
-          <span className="hidden sm:inline">{backLabel}</span>
+          <ArrowLeft className="size-4" aria-hidden="true" />
+          <span>{backLabel}</span>
         </Link>
       </div>
     </header>

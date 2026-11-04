@@ -2,13 +2,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 function HeaderSkeleton() {
   return (
-    <div className="bg-neutral-200">
+    <div className="border-t-4 border-neutral-200 border-b border-b-[#ececf0] bg-white">
       <div className="mx-auto flex max-w-[1264px] items-center justify-between px-5 py-4 sm:px-8 sm:py-5">
         <div className="flex items-center gap-4">
-          <Skeleton className="size-14 rounded-full bg-white/70" />
-          <Skeleton className="h-8 w-44 bg-white/70" />
+          <Skeleton className="size-14 rounded-full" />
+          <Skeleton className="h-8 w-44" />
         </div>
-        <Skeleton className="h-5 w-28 bg-white/70" />
+        <Skeleton className="h-11 w-36 rounded-full" />
       </div>
     </div>
   );

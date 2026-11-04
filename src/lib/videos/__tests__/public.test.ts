@@ -32,7 +32,7 @@ describe("selectPublishable", () => {
 describe("selectPublishable · fullMatch", () => {
   it("points a YouTube match at its YouTube id", () => {
     const out = selectPublishable([{ project, video: video({ source_url: "https://www.youtube.com/watch?v=abc123XYZ_-" }), clips: [clip("a", 2)] }]);
-    expect(out[0].fullMatch).toEqual({ kind: "youtube", id: "abc123XYZ_-" });
+    expect(out[0].fullMatch).toEqual({ kind: "youtube", id: "abc123XYZ_-", watchUrl: "https://www.youtube.com/watch?v=abc123XYZ_-" });
   });
   it("points an uploaded match with a streaming copy at the app's HLS playlist", () => {
     const out = selectPublishable([{ project, video: video({ hls_path: "v1/hls" }), clips: [clip("a", 2)] }]);
@@ -41,5 +41,18 @@ describe("selectPublishable · fullMatch", () => {
   it("has no full match while the streaming copy is not ready", () => {
     const out = selectPublishable([{ project, video: video({ hls_path: null }), clips: [clip("a", 2)] }]);
     expect(out[0].fullMatch).toBeNull();
+  });
+});
+
+describe("selectPublishable · durations for the match page", () => {
+  it("sums the ready clips into reelSeconds and exposes the full match length", () => {
+    const out = selectPublishable([{ project, video: video({ duration: 1620.4 }), clips: [clip("a", 2, 10), clip("b", 1, 100), clip("c", 0, 200)] }]);
+    expect(out[0].reelSeconds).toBe(30);
+    expect(out[0].fullMatchSeconds).toBe(1620.4);
+    expect(out[0].clips[0]).toMatchObject({ startTime: 10, endTime: 25 });
+  });
+  it("keeps the YouTube watch URL so the page can link to it", () => {
+    const out = selectPublishable([{ project, video: video({ source_url: "https://youtu.be/abc123XYZ_-" }), clips: [clip("a", 2)] }]);
+    expect(out[0].fullMatch).toEqual({ kind: "youtube", id: "abc123XYZ_-", watchUrl: "https://www.youtube.com/watch?v=abc123XYZ_-" });
   });
 });

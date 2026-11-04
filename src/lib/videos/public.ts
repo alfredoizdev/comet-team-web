@@ -16,9 +16,9 @@ export function matchDateLabel(m: Pick<PublicMatch, "matchDate">): string | null
   return m.matchDate ? longDate.format(new Date(`${m.matchDate}T12:00:00`)) : null;
 }
 
-export type PublicClip = { id: string; startTime: number; url: string; player: string | null };
+export type PublicClip = { id: string; startTime: number; endTime: number; url: string; player: string | null };
 /** Where the whole match plays from: YouTube embed, or the app's HLS playlist (served with signed segments). */
-export type PublicFullMatch = { kind: "youtube"; id: string } | { kind: "hls"; url: string };
+export type PublicFullMatch = { kind: "youtube"; id: string; watchUrl: string } | { kind: "hls"; url: string };
 export type PublicMatch = {
   id: string;
   title: string;
@@ -29,13 +29,17 @@ export type PublicMatch = {
   reelUrl: string | null;
   reelRebuilding: boolean;
   clips: PublicClip[];
+  /** Length of the highlight reel: the ready clips end to end. */
+  reelSeconds: number;
+  /** Length of the whole match when known. */
+  fullMatchSeconds: number | null;
   /** Null while an uploaded match has no streaming copy yet (or its master was never processed). */
   fullMatch: PublicFullMatch | null;
 };
 
 function fullMatchOf(video: Video): PublicFullMatch | null {
   const yt = video.source_url ? parseYouTubeUrl(video.source_url) : null;
-  if (yt) return { kind: "youtube", id: yt.id };
+  if (yt) return { kind: "youtube", id: yt.id, watchUrl: yt.url };
   if (video.hls_path) return { kind: "hls", url: hlsMasterUrl(video.id) };
   return null;
 }
@@ -44,7 +48,9 @@ function fullMatchOf(video: Video): PublicFullMatch | null {
 export function selectPublishable(rows: { project: Project; video: Video; clips: ClipWithPlayer[] }[]): PublicMatch[] {
   return rows
     .filter(({ video }) => video.is_published && video.status === "done")
-    .map(({ project, video, clips }) => ({
+    .map(({ project, video, clips }) => {
+      const ready = clips.filter((c) => c.score > 0).sort((a, b) => a.start_time - b.start_time);
+      return {
       id: project.id,
       title: project.title,
       opponent: project.opponent,
@@ -53,11 +59,11 @@ export function selectPublishable(rows: { project: Project; video: Video; clips:
       reelUrl: null,
       reelRebuilding: !video.highlight_reel_path,
       fullMatch: fullMatchOf(video),
-      clips: clips
-        .filter((c) => c.score > 0)
-        .sort((a, b) => a.start_time - b.start_time)
-        .map((c) => ({ id: c.id, startTime: c.start_time, url: c.file_path, player: c.player_name })),
-    }));
+      reelSeconds: ready.reduce((sum, c) => sum + (c.end_time - c.start_time), 0),
+      fullMatchSeconds: video.duration,
+      clips: ready.map((c) => ({ id: c.id, startTime: c.start_time, endTime: c.end_time, url: c.file_path, player: c.player_name })),
+      };
+    });
 }
 
 /** Published matches of a team with signed URLs. Never throws: the public page must render. */
