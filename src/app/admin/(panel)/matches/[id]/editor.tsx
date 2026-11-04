@@ -2,15 +2,12 @@
 
 // Port of PeakClip apps/web/app/clips/[videoId]/edit/page.tsx without players,
 // overlays and AI. Data comes from server actions (no browser Supabase access).
+// Presentation follows design/comets-admin-editor.claude-design.html (4a–4k).
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Loader2, MapPin, Maximize2, Minimize2, Pause, Play, Plus, Scissors, SkipBack, SkipForward, Trash2, ZoomIn, ZoomOut } from "lucide-react";
+import { Loader2, Pause, Play, SkipBack, SkipForward, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import type { ClipWithPlayer as Clip, Team } from "@/lib/db/types";
-import { teams } from "@/lib/teams";
 import type { VideoView } from "@/lib/videos/status";
 import { assignPlayer, createCustomClip, deleteClip, type MatchState } from "./actions";
 import { NameCombobox } from "@/components/name-combobox";
@@ -29,8 +26,17 @@ function parseTime(str: string): number {
   return parseFloat(str) || 0;
 }
 
+const ZOOM_STEPS = [1, 2, 4, 8];
+
+/** Mono time field (76 px) of the design; light and dark variants. */
+function fieldClass(dark: boolean) {
+  return `h-11 w-full min-w-0 rounded-lg border px-2.5 font-mono text-[15px] font-semibold outline-none sm:h-10 sm:w-[76px] sm:text-sm ${
+    dark ? "border-[#3a4560] bg-[#121a2e] text-white focus:border-white" : "border-[#d5d9e2] bg-white text-[#0e0e12] focus:border-boys"
+  }`;
+}
+
 /** Shows mm:ss but lets you type freely; applies on blur/Enter. */
-function TimeInput({ value, onChange, className }: { value: number; onChange: (seconds: number) => void; className?: string }) {
+function TimeInput({ value, onChange, className, ariaLabel }: { value: number; onChange: (seconds: number) => void; className: string; ariaLabel: string }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   function apply() {
@@ -39,7 +45,8 @@ function TimeInput({ value, onChange, className }: { value: number; onChange: (s
     setEditing(false);
   }
   return (
-    <Input
+    <input
+      aria-label={ariaLabel}
       value={editing ? draft : formatTimeFull(value)}
       onChange={(e) => setDraft(e.target.value)}
       onFocus={(e) => {
@@ -59,15 +66,29 @@ function TimeInput({ value, onChange, className }: { value: number; onChange: (s
   );
 }
 
+/** Assigns clip markers to up to three rows so their numbers never overlap (design 4k). */
+function laneFor(positions: number[], thresholdPct: number): { lanes: number[]; count: number } {
+  const last = [-999, -999, -999];
+  let max = 0;
+  const lanes = positions.map((p) => {
+    let lane = last.findIndex((l) => p - l >= thresholdPct);
+    if (lane < 0) lane = last.indexOf(Math.min(...last));
+    last[lane] = p;
+    max = Math.max(max, lane);
+    return lane;
+  });
+  return { lanes, count: max + 1 };
+}
+
 type Source = { label: string; kind: "video"; url: string; duration: number } | { label: string; kind: "youtube"; youtubeId: string; duration: number };
 
-export function Editor({ state, team }: { state: MatchState; team: Team }) {
+export function Editor({ state, team, title }: { state: MatchState; team: Team; title: string }) {
   const router = useRouter();
   const video = state.video!;
   const clips = state.clips;
   const clipUrls = state.urls.clips;
   const view: VideoView = state.view;
-  const accent = teams[team];
+  void team;
 
   const sources: Source[] = [];
   if (state.youtubeId) sources.push({ label: "Full match", kind: "youtube", youtubeId: state.youtubeId, duration: video.duration ?? 0 });
@@ -163,6 +184,7 @@ export function Editor({ state, team }: { state: MatchState; team: Team }) {
   }, [videoUrl]);
 
   function switchSource(i: number) {
+    if (i === sourceIndex) return;
     playerRef.current = null;
     setSourceIndex(i);
     setTrimStart(0);
@@ -195,23 +217,26 @@ export function Editor({ state, team }: { state: MatchState; team: Team }) {
     setCurrentTime(clamped);
   }
 
+  function timeAtClientX(clientX: number): number {
+    const el = timelineRef.current;
+    if (!el) return 0;
+    const rect = el.getBoundingClientRect();
+    const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    return x * videoDuration;
+  }
+
   function handleTimelineClick(e: React.MouseEvent<HTMLDivElement>) {
     if (dragging) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    seekTo(((e.clientX - rect.left) / rect.width) * videoDuration / zoom);
+    seekTo(timeAtClientX(e.clientX));
   }
 
   function handleTrimDrag(e: React.MouseEvent | React.TouchEvent, type: "start" | "end") {
     e.preventDefault();
     e.stopPropagation();
     setDragging(type);
-    const timeline = timelineRef.current;
-    if (!timeline) return;
     const clientX = (ev: MouseEvent | TouchEvent) => ("touches" in ev ? ev.touches[0]?.clientX ?? 0 : ev.clientX);
     const onMove = (ev: MouseEvent | TouchEvent) => {
-      const rect = timeline.getBoundingClientRect();
-      const x = Math.max(0, Math.min(1, (clientX(ev) - rect.left) / rect.width));
-      const time = (x * videoDuration) / zoom;
+      const time = timeAtClientX(clientX(ev));
       if (type === "start") setTrimStart(Math.max(0, Math.min(time, trimEnd - 1)));
       else setTrimEnd(Math.min(videoDuration, Math.max(time, trimStart + 1)));
     };
@@ -296,97 +321,134 @@ export function Editor({ state, team }: { state: MatchState; team: Team }) {
     }
   }
 
+  const clipName = (clip: Clip, i: number) => (clip.score === 0 ? "New clip" : clip.score < 0 ? "Failed clip" : i === 0 ? "Best moment" : `Moment #${i + 1}`);
+
+  const dark = maximized;
+
   const clipsPanel = (
-    <>
-    {clips.length > 0 ? (
-      <div className={`shrink-0 border-t bg-white md:border-l md:border-t-0 ${maximized ? "md:flex md:min-h-0 md:w-96 md:flex-col" : "md:w-80"}`}>
-        <div className="border-b px-4 py-3">
-          <h3 className="text-sm font-semibold">Clips</h3>
-          <p className="text-xs text-neutral-500">{clips.length} moments</p>
-        </div>
-        <div className={`flex gap-3 overflow-x-auto px-4 py-3 md:flex-col md:overflow-y-auto ${maximized ? "md:min-h-0 md:flex-1" : "md:max-h-[560px]"}`}>
-          {clips.map((clip, i) => {
-            const url = clipUrls[clip.id];
-            const range = clipRange(clip);
-            const current = !!range && currentTime >= range[0] && currentTime <= range[1];
-            const deleting = deletingIds.has(clip.id);
-            return (
-              <div
-                key={clip.id}
-                className={`group relative w-36 shrink-0 cursor-pointer overflow-hidden rounded-lg border transition md:flex md:w-auto md:gap-3 md:p-2 ${
-                  deleting
-                    ? "pointer-events-none border-red-400 bg-red-50 opacity-60"
-                    : current
-                      ? `${team === "girls" ? "border-girls" : "border-boys"} ring-2 ring-neutral-200`
-                      : "border-neutral-200"
-                }`}
-                onClick={() => jumpToClip(clip)}
-              >
-                {deleting ? (
-                  <span className="absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                    <Loader2 className="size-3 animate-spin" aria-hidden="true" /> Removing
-                  </span>
-                ) : null}
-                <div className="relative aspect-video bg-neutral-900 md:w-28 md:shrink-0 md:rounded-md">
-                  {url ? (
-                    <video src={url} className="size-full object-cover" muted preload="metadata" />
-                  ) : (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-neutral-800">
-                      <Loader2 className="size-4 animate-spin text-white/70" />
-                      <span className="text-[9px] text-neutral-300">{clip.score < 0 ? "Failed" : "Processing…"}</span>
-                    </div>
-                  )}
-                  <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1 text-[10px] text-white">{formatTimeFull(clip.start_time)}</span>
-                </div>
-                <div className="flex min-w-0 flex-1 items-start justify-between px-2 py-1.5 md:px-0">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-medium md:text-sm">{i === 0 ? "Best moment" : `Moment #${i + 1}`}</p>
-                    <p className="text-[10px] text-neutral-500 md:text-xs">
-                      {formatTimeFull(clip.start_time)} – {formatTimeFull(clip.end_time)}
-                    </p>
-                    <div className="mt-1.5 hidden md:block" onClick={(e) => e.stopPropagation()}>
-                      <NameCombobox
-                        value={clip.player_name ?? ""}
-                        onChange={(name) => void handlePlayer(clip, name)}
-                        options={state.players}
-                        placeholder="Player (optional)"
-                        searchPlaceholder="Search players…"
-                        emptyLabel="No players saved yet. Type a name to add one."
-                        clearLabel="No player"
-                        size="sm"
-                        className="h-7 text-xs"
-                      />
-                    </div>
-                    {clip.player_name ? <p className="mt-1 text-[10px] font-medium text-neutral-700 md:hidden">{clip.player_name}</p> : null}
-                  </div>
-                  <button
-                    type="button"
-                    aria-label="Delete clip"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void handleDeleteClip(clip);
-                    }}
-                    className="shrink-0 rounded p-1 text-neutral-400 transition hover:bg-red-50 hover:text-red-500"
-                  >
-                    <Trash2 className="size-3.5" />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+    <aside className={dark ? "flex min-h-0 flex-col border-t border-[#26304a] bg-[#121a2e] md:border-l md:border-t-0" : "flex min-w-0 flex-col gap-3 rounded-xl border border-[#e3e6ec] bg-white p-3 md:rounded-none md:border-0 md:p-0"}>
+      <div className={`flex items-baseline justify-between ${dark ? "px-3.5 pb-2.5 pt-4" : ""}`}>
+        <h2 className={`font-display tracking-[0.02em] ${dark ? "text-2xl text-white" : "text-[26px] text-[#0e0e12] sm:text-[28px]"}`}>Clips · {clips.length} moments</h2>
+        {!dark ? <span className="text-xs font-medium text-[#5b6070]">By time</span> : null}
       </div>
-    ) : null}
-    </>
+      {reelUpdating && !dark ? (
+        <div role="status" className="flex items-start gap-2 rounded-lg border border-[#f5d58a] bg-[#fff4db] px-3 py-2.5 text-[13px] font-medium leading-[1.4] text-[#7a4a00]">
+          <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin" aria-hidden="true" />
+          <span>Updating highlight reel… the current reel stays live until the new one is ready.</span>
+        </div>
+      ) : null}
+      <div className={dark ? "flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-2.5 pb-3" : "flex flex-col gap-2 md:max-h-[860px] md:overflow-y-auto md:pr-1"}>
+        {clips.map((clip, i) => {
+          const url = clipUrls[clip.id];
+          const range = clipRange(clip);
+          const active = !!range && currentTime >= range[0] && currentTime <= range[1];
+          const removing = deletingIds.has(clip.id);
+          const cutting = clip.score === 0;
+          const editable = !removing && !cutting;
+          const thumb = (
+            <div className={`relative aspect-video overflow-hidden ${dark ? "rounded bg-[#26304a]" : "rounded-md bg-[#1a2134]"}`}>
+              {url ? (
+                <video src={url} className="size-full object-cover" muted preload="metadata" />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center text-white">
+                  <Loader2 className={`animate-spin ${dark ? "size-3.5" : "size-[18px]"}`} aria-hidden="true" />
+                </div>
+              )}
+              <span className={`absolute bottom-1 right-1 rounded bg-black/75 font-mono font-semibold text-white ${dark ? "px-1 text-[10px]" : "px-[5px] py-px text-[11px]"}`}>
+                {formatTimeFull(clip.start_time)}
+              </span>
+            </div>
+          );
+          if (dark) {
+            return (
+              <button
+                key={clip.id}
+                type="button"
+                onClick={() => jumpToClip(clip)}
+                className={`grid grid-cols-[80px_minmax(0,1fr)] items-center gap-2.5 rounded-lg border p-1.5 text-left ${active ? "border-white" : "border-[#26304a]"}`}
+              >
+                {thumb}
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <span className="truncate text-[13px] font-semibold text-white">{clipName(clip, i)}</span>
+                  <span className={`text-xs font-medium ${cutting ? "text-[#f5c76a]" : removing ? "text-[#ff9b90]" : "text-[#a9b3cc]"}`}>
+                    {cutting ? "Cutting…" : removing ? "Removing" : clip.player_name || formatTimeFull(clip.start_time)}
+                  </span>
+                </span>
+              </button>
+            );
+          }
+          return (
+            <div
+              key={clip.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => jumpToClip(clip)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") jumpToClip(clip);
+              }}
+              className={`grid cursor-pointer grid-cols-[108px_minmax(0,1fr)] gap-2.5 rounded-[10px] border p-2 transition sm:grid-cols-[112px_minmax(0,1fr)] ${
+                removing
+                  ? "pointer-events-none border-[#f6c9c5] bg-[#fdecec]"
+                  : active
+                    ? "border-boys bg-[#f5f7fb] shadow-[inset_0_0_0_1px_#0b1f4b]"
+                    : "border-[#e3e6ec] bg-white hover:border-[#c3c8d2]"
+              }`}
+            >
+              {thumb}
+              <div className="flex min-w-0 flex-col gap-1 sm:gap-1.5">
+                <div className="flex items-center justify-between gap-1.5">
+                  <span className="truncate text-sm font-semibold text-[#0e0e12]">{clipName(clip, i)}</span>
+                  {editable ? (
+                    <button
+                      type="button"
+                      aria-label="Delete clip"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleDeleteClip(clip);
+                      }}
+                      className="-m-1.5 flex size-11 shrink-0 items-center justify-center rounded-md text-[#5b6070] transition hover:bg-[#fdecec] hover:text-[#b42318] sm:m-0 sm:size-8"
+                    >
+                      <Trash2 className="size-4" aria-hidden="true" />
+                    </button>
+                  ) : null}
+                </div>
+                <span className="font-mono text-xs font-medium text-[#5b6070]">
+                  {formatTimeFull(clip.start_time)} – {formatTimeFull(clip.end_time)}
+                </span>
+                {editable ? (
+                  <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+                    <NameCombobox
+                      value={clip.player_name ?? ""}
+                      onChange={(name) => void handlePlayer(clip, name)}
+                      options={state.players}
+                      placeholder="Add player"
+                      searchPlaceholder="Search or add a player"
+                      emptyLabel="No players saved yet. Type a name to add one."
+                      clearLabel="No player"
+                      size="sm"
+                      className={`h-11 rounded-md border-[#d5d9e2] text-sm sm:h-8 sm:text-[13px] ${clip.player_name ? "text-[#0e0e12]" : "text-[#5b6070]"}`}
+                    />
+                  </div>
+                ) : null}
+                {cutting ? <span className="text-xs font-semibold text-[#7a4a00]">Cutting…</span> : null}
+                {removing ? <span className="text-xs font-semibold text-[#b42318]">Removing</span> : null}
+                {clip.score < 0 ? <span className="text-xs font-semibold text-[#b42318]">Could not cut this clip</span> : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </aside>
   );
+
   if (sources.length === 0) {
     // No playable source right now (e.g. the reel is being rebuilt after a clip was deleted
     // and the full match was already removed): keep the clip list usable.
     return (
-      <div className="flex flex-col overflow-hidden rounded-xl border bg-white">
-        <div className="flex items-center gap-2 border-b px-3 py-2">
-          <Loader2 className="size-4 animate-spin text-neutral-500" aria-hidden="true" />
-          <span className="text-sm text-neutral-600">The highlight reel is being rebuilt. You can still rename or delete clips.</span>
+      <div className="flex flex-col gap-3 rounded-xl border border-[#e3e6ec] bg-white p-3 sm:p-5">
+        <div className="flex items-center gap-2 text-sm text-[#5b6070]">
+          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+          <span>The highlight reel is being rebuilt. You can still rename or delete clips.</span>
         </div>
         {clipsPanel}
       </div>
@@ -394,231 +456,357 @@ export function Editor({ state, team }: { state: MatchState; team: Team }) {
   }
 
   const trimDuration = trimEnd - trimStart;
-  const pct = (t: number) => (videoDuration ? (t / videoDuration) * 100 * zoom : 0);
+  const pct = (t: number) => (videoDuration ? (t / videoDuration) * 100 : 0);
   const cutDisabled = creating || trimDuration < 1 || !view.canCut || !isFullMatch;
-  const cutTitle = !view.canCut ? "The full match was removed after processing, so new clips can't be cut." : undefined;
+  const cutTitle = !view.canCut ? "The original file was deleted, so new clips can't be cut." : !isFullMatch ? "Switch to the full match to cut a new clip." : undefined;
+  const selectionLabel = `${formatTimeFull(trimStart)} – ${formatTimeFull(trimEnd)} (${trimDuration.toFixed(0)}s)`;
 
-  return (
-    <div className={maximized ? "fixed inset-0 z-50 flex flex-col bg-white" : "flex flex-col overflow-hidden rounded-xl border bg-white"}>
-      {/* Top bar */}
-      <div className="flex items-center gap-2 overflow-x-auto border-b px-3 py-2">
-        <span className="shrink-0 text-sm font-semibold">Clip editor</span>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="shrink-0"
-          onClick={() => setMaximized((m) => !m)}
-          aria-label={maximized ? "Exit fullscreen editor" : "Fullscreen editor"}
-        >
-          {maximized ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
-          <span className="ml-1.5 hidden sm:inline">{maximized ? "Exit fullscreen" : "Fullscreen"}</span>
-        </Button>
-        {sources.length > 1 ? (
-          <div className="flex shrink-0 items-center gap-0.5 rounded-lg bg-neutral-100 p-0.5">
-            {sources.map((src, i) => (
-              <button
-                key={src.label}
-                type="button"
-                onClick={() => switchSource(i)}
-                className={`whitespace-nowrap rounded-md px-2 py-1 text-xs font-medium transition ${i === sourceIndex ? `${accent.bg} text-white` : "text-neutral-500 hover:bg-neutral-200 hover:text-neutral-900"}`}
-              >
-                {src.label}
-              </button>
-            ))}
-          </div>
-        ) : null}
-        {reelUpdating ? (
-          <span className="ml-2 inline-flex shrink-0 items-center gap-1.5 text-xs text-neutral-600">
-            <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> Updating highlight reel…
-          </span>
-        ) : null}
-        <div className="flex-1" />
-        <Badge className={`${accent.bg} shrink-0 text-[11px] text-white`}>
-          {formatTimeFull(trimStart)} – {formatTimeFull(trimEnd)} ({trimDuration.toFixed(0)}s)
-        </Badge>
-      </div>
+  // Timeline model: labels every 5 min (1 min on short sources), minute ticks, markers in lanes.
+  const minutes = Math.floor(videoDuration / 60);
+  const labelEvery = videoDuration > 1200 ? 5 : 1;
+  const ranges = clips.map((c) => ({ clip: c, range: clipRange(c) })).filter((r): r is { clip: Clip; range: [number, number] } => !!r.range);
+  const { lanes, count: laneCount } = laneFor(ranges.map((r) => pct(r.range[0])), 3.4 / zoom);
 
-      <div className={`flex min-h-0 flex-col md:flex-row ${maximized ? "flex-1" : ""}`}>
-        {/* Video + controls */}
-        <div className={`flex min-w-0 flex-1 flex-col ${maximized ? "min-h-0" : ""}`}>
-          <div className={`relative flex items-center justify-center overflow-hidden bg-black ${maximized ? "min-h-0 flex-1" : "aspect-video"}`}>
-            {isYouTube && activeSource.kind === "youtube" ? (
-              <YouTubePlayer
-                videoId={activeSource.youtubeId}
-                onReady={(handle, duration) => {
-                  playerRef.current = handle;
-                  setMediaDuration(duration);
-                  setVideoReady(true);
-                }}
-                onState={(st) => {
-                  setBuffering(st === "buffering");
-                  if (st === "playing") setPlaying(true);
-                  if (st === "paused" || st === "ended") setPlaying(false);
-                }}
-                onTime={setCurrentTime}
-                onClick={togglePlay}
-              />
-            ) : (
-              <video ref={videoRef} className={maximized ? "size-full object-contain" : "max-h-full max-w-full object-contain"} onClick={togglePlay} preload="metadata" playsInline />
-            )}
-            {!videoReady || buffering ? (
-              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/60 text-white">
-                <Loader2 className="mb-2 size-8 animate-spin" />
-                <p className="text-sm text-white/70">{!videoReady ? "Loading video…" : "Buffering…"}</p>
-              </div>
-            ) : null}
-            {videoReady && !playing && !buffering ? (
-              <button type="button" onClick={togglePlay} aria-label="Play" className="absolute inset-0 flex items-center justify-center">
-                <span className="flex size-16 items-center justify-center rounded-full bg-white/10 backdrop-blur-sm transition hover:bg-white/20">
-                  <Play className="ml-1 size-7 text-white" />
-                </span>
-              </button>
-            ) : null}
-          </div>
+  const ctl = {
+    square: `flex size-11 shrink-0 items-center justify-center rounded-lg border sm:size-10 ${dark ? "border-[#3a4560] text-white hover:bg-white/10" : "border-[#d5d9e2] bg-white text-[#0e0e12] hover:bg-[#f4f5f8]"}`,
+    outline: `inline-flex h-11 shrink-0 items-center justify-center whitespace-nowrap rounded-lg border px-3.5 text-sm font-semibold transition sm:h-10 ${dark ? "border-[#3a4560] text-white hover:bg-white/10" : "border-[#d5d9e2] bg-white text-[#0e0e12] hover:bg-[#f4f5f8]"}`,
+    label: `text-xs font-semibold ${dark ? "text-[#a9b3cc]" : "text-[#5b6070]"}`,
+  };
 
-          <div className={`border-t ${!videoReady ? "pointer-events-none opacity-50" : ""}`}>
-            <div className="flex items-center justify-center gap-1 py-2 sm:gap-2">
-              <Button variant="ghost" size="icon-sm" aria-label="Back 5 seconds" onClick={() => seekTo(currentTime - 5)}>
-                <SkipBack className="size-4" />
-              </Button>
-              <Button variant="ghost" size="icon" aria-label={playing ? "Pause" : "Play"} onClick={togglePlay}>
-                {playing ? <Pause className="size-5" /> : <Play className="ml-0.5 size-5" />}
-              </Button>
-              <Button variant="ghost" size="icon-sm" aria-label="Forward 5 seconds" onClick={() => seekTo(currentTime + 5)}>
-                <SkipForward className="size-4" />
-              </Button>
-              <span className="ml-3 font-mono text-xs text-neutral-500 sm:text-sm">
-                {formatTimeFull(currentTime)} / {formatTimeFull(videoDuration)}
-              </span>
-              <div className="ml-4 flex items-center gap-1">
-                <Button variant="ghost" size="icon-xs" aria-label="Zoom out" onClick={() => setZoom(Math.max(1, zoom - 0.5))}>
-                  <ZoomOut className="size-3" />
-                </Button>
-                <span className="w-8 text-center text-xs text-neutral-500">{zoom}x</span>
-                <Button variant="ghost" size="icon-xs" aria-label="Zoom in" onClick={() => setZoom(Math.min(5, zoom + 0.5))}>
-                  <ZoomIn className="size-3" />
-                </Button>
-              </div>
-            </div>
+  const sourcePills = (
+    <div role="group" aria-label="Video source" className={`grid grid-cols-2 gap-1 rounded-full p-[3px] sm:flex ${dark ? "bg-[#1a2236]" : "bg-[#eef0f4]"}`}>
+      {sources.map((src, i) => {
+        const on = i === sourceIndex;
+        return (
+          <button
+            key={src.label}
+            type="button"
+            aria-pressed={on}
+            onClick={() => switchSource(i)}
+            className={`min-h-10 whitespace-nowrap rounded-full px-3.5 text-sm font-semibold transition sm:min-h-[30px] sm:text-[13px] ${
+              on ? (dark ? "bg-white text-boys" : "bg-boys text-white") : dark ? "text-[#dce2ef] hover:bg-white/10" : "text-[#0e0e12] hover:bg-white/70"
+            }`}
+          >
+            {src.label}
+          </button>
+        );
+      })}
+    </div>
+  );
 
-            {/* Timeline */}
-            <div className="px-2 pb-2 sm:px-4">
-              <div ref={timelineRef} className="relative h-24 cursor-crosshair touch-none select-none overflow-hidden rounded-xl bg-neutral-100 sm:h-16" onClick={handleTimelineClick}>
-                {Array.from({ length: Math.ceil(videoDuration / 60) + 1 }, (_, i) => {
-                  const left = pct(i * 60);
-                  if (left > 100) return null;
-                  const major = i % 5 === 0;
-                  return (
-                    <div key={i} className={`absolute top-0 h-full border-l ${major ? "border-neutral-300" : "hidden border-neutral-200 sm:block"}`} style={{ left: `${left}%` }}>
-                      <span className="absolute left-1 top-1 text-[9px] font-medium text-neutral-400">{i}m</span>
-                    </div>
-                  );
-                })}
-                {clips.map((clip, i) => {
-                  const range = clipRange(clip);
-                  if (!range) return null;
-                  return (
-                    <div
-                      key={clip.id}
-                      className="absolute top-1 h-4 cursor-pointer rounded-sm border border-emerald-500/50 bg-emerald-500/30 transition hover:bg-emerald-500/50 sm:h-3"
-                      style={{ left: `${pct(range[0])}%`, width: `${Math.max(pct(range[1]) - pct(range[0]), 1.5)}%` }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        jumpToClip(clip);
-                      }}
-                      title={`Moment #${i + 1}`}
-                    >
-                      <span className="block truncate px-0.5 text-[8px] text-emerald-700">#{i + 1}</span>
-                    </div>
-                  );
-                })}
-                <div className={`absolute bottom-1 top-6 border-y-2 sm:top-5 ${team === "girls" ? "border-girls bg-girls/20" : "border-boys bg-boys/20"}`} style={{ left: `${pct(trimStart)}%`, width: `${pct(trimEnd) - pct(trimStart)}%` }} />
-                <div
-                  className={`${accent.bg} absolute bottom-1 top-6 z-20 flex w-5 cursor-col-resize items-center justify-center rounded-l sm:top-5 sm:w-3`}
-                  style={{ left: `calc(${pct(trimStart)}% - 10px)` }}
-                  onMouseDown={(e) => handleTrimDrag(e, "start")}
-                  onTouchStart={(e) => handleTrimDrag(e, "start")}
-                >
-                  <ChevronRight className="size-3 text-white" />
-                </div>
-                <div
-                  className={`${accent.bg} absolute bottom-1 top-6 z-20 flex w-5 cursor-col-resize items-center justify-center rounded-r sm:top-5 sm:w-3`}
-                  style={{ left: `calc(${pct(trimEnd)}% - 2px)` }}
-                  onMouseDown={(e) => handleTrimDrag(e, "end")}
-                  onTouchStart={(e) => handleTrimDrag(e, "end")}
-                >
-                  <ChevronLeft className="size-3 text-white" />
-                </div>
-                <div className="pointer-events-none absolute bottom-0 top-0 z-30 w-0.5 bg-red-500" style={{ left: `${pct(currentTime)}%` }}>
-                  <div className="-ml-[5px] -mt-0.5 size-3 rounded-full bg-red-500" />
-                </div>
-              </div>
-            </div>
+  const selectionChip = (
+    <span className={`whitespace-nowrap rounded-full px-3 py-[5px] font-mono text-xs font-semibold sm:text-[13px] ${dark ? "bg-white text-boys" : "bg-boys text-white"}`}>{selectionLabel}</span>
+  );
 
-            {/* Trim inputs + actions */}
-            <div className="space-y-2 border-t px-4 pb-3 pt-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <form
-                  className="flex items-center gap-1.5"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const time = parseTime(jumpInput);
-                    if (time > 0 && time <= videoDuration) {
-                      seekTo(time);
-                      setTrimStart(Math.max(0, time - 5));
-                      setTrimEnd(Math.min(videoDuration, time + 10));
-                      setJumpInput("");
-                    }
-                  }}
-                >
-                  <Input value={jumpInput} onChange={(e) => setJumpInput(e.target.value)} placeholder="34:07" aria-label="Jump to time" className="h-8 w-16 text-center font-mono text-sm" />
-                  <Button type="submit" variant="outline" size="sm">
-                    <MapPin className="mr-1 size-3" /> Go
-                  </Button>
-                </form>
-                <div className="hidden h-6 w-px bg-border sm:block" />
-                <label className="flex items-center gap-2 text-xs text-neutral-500">
-                  Start <TimeInput value={trimStart} onChange={setTrimStart} className="h-8 w-16 text-center font-mono text-sm" />
-                </label>
-                <label className="flex items-center gap-2 text-xs text-neutral-500">
-                  End <TimeInput value={trimEnd} onChange={setTrimEnd} className="h-8 w-16 text-center font-mono text-sm" />
-                </label>
-                <span className="text-xs text-neutral-500">{trimDuration.toFixed(0)}s</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setTrimStart(Math.max(0, currentTime - 5));
-                    setTrimEnd(Math.min(videoDuration, currentTime + 10));
-                  }}
-                >
-                  <Scissors className="mr-1.5 size-3" />
-                  <span className="hidden sm:inline">Set around playhead</span>
-                  <span className="sm:hidden">Playhead</span>
-                </Button>
-                <div className="flex-1" />
-                <Button onClick={handleCreateClip} disabled={cutDisabled} title={cutTitle} className={`${accent.bg} text-white hover:opacity-90`}>
-                  {creating ? (
-                    <>
-                      <Loader2 className="mr-1.5 size-4 animate-spin" /> Creating clip…
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="mr-1.5 size-4" /> Create clip ({trimDuration.toFixed(0)}s)
-                    </>
-                  )}
-                </Button>
-              </div>
-              {!view.canCut ? <p className="text-xs text-neutral-500">{cutTitle}</p> : null}
-            </div>
-          </div>
+  const player = (
+    <div className={`relative flex items-center justify-center overflow-hidden bg-black ${dark ? "h-full max-w-full rounded-lg" : "-mx-3 aspect-video sm:mx-0 sm:rounded-[10px]"}`} style={dark ? { aspectRatio: "16 / 9" } : undefined}>
+      {isYouTube && activeSource.kind === "youtube" ? (
+        <YouTubePlayer
+          videoId={activeSource.youtubeId}
+          onReady={(handle, duration) => {
+            playerRef.current = handle;
+            setMediaDuration(duration);
+            setVideoReady(true);
+          }}
+          onState={(st) => {
+            setBuffering(st === "buffering");
+            if (st === "playing") setPlaying(true);
+            if (st === "paused" || st === "ended") setPlaying(false);
+          }}
+          onTime={setCurrentTime}
+          onClick={togglePlay}
+        />
+      ) : (
+        <video ref={videoRef} className="size-full object-contain" onClick={togglePlay} preload="metadata" playsInline />
+      )}
+      {!dark && videoReady ? (
+        <span className="pointer-events-none absolute left-3 top-3 rounded-full bg-white/15 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-sm">{activeSource.label}</span>
+      ) : null}
+      {!videoReady || buffering ? (
+        <div role="status" className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2.5 bg-black/60 text-[13px] font-medium text-white">
+          <Loader2 className="size-6 animate-spin" aria-hidden="true" />
+          {!videoReady ? "Loading video…" : "Buffering…"}
         </div>
+      ) : null}
+      {videoReady && !playing && !buffering ? (
+        <button type="button" onClick={togglePlay} aria-label="Play" className="absolute inset-0 flex items-center justify-center">
+          <span className="flex size-[60px] items-center justify-center rounded-full bg-white text-boys shadow-[0_8px_24px_rgba(0,0,0,0.3)] transition hover:scale-105 sm:size-[72px]">
+            <Play className="ml-1 size-6 fill-current sm:size-7" />
+          </span>
+        </button>
+      ) : null}
+    </div>
+  );
 
+  const controls = (
+    <div className={`flex items-center gap-1.5 sm:gap-2 ${!videoReady ? "pointer-events-none opacity-50" : ""}`}>
+      <button type="button" aria-label="Back 5 seconds" onClick={() => seekTo(currentTime - 5)} className={ctl.square}>
+        <SkipBack className="size-4" />
+      </button>
+      <button
+        type="button"
+        aria-label={playing ? "Pause" : "Play"}
+        onClick={togglePlay}
+        className={`flex size-12 shrink-0 items-center justify-center rounded-full sm:size-11 ${dark ? "bg-white text-boys" : "bg-boys text-white"}`}
+      >
+        {playing ? <Pause className="size-5 fill-current" /> : <Play className="ml-0.5 size-5 fill-current" />}
+      </button>
+      <button type="button" aria-label="Forward 5 seconds" onClick={() => seekTo(currentTime + 5)} className={ctl.square}>
+        <SkipForward className="size-4" />
+      </button>
+      <span className={`ml-auto font-mono text-sm font-semibold sm:ml-2 sm:text-[15px] ${dark ? "text-white" : "text-[#0e0e12]"}`}>
+        {formatTimeFull(currentTime)} <span className={dark ? "text-[#a9b3cc]" : "text-[#5b6070]"}>/ {formatTimeFull(videoDuration)}</span>
+      </span>
+      <div role="group" aria-label="Timeline zoom" className={`hidden items-center overflow-hidden rounded-lg border sm:ml-auto sm:flex ${dark ? "border-[#3a4560]" : "border-[#d5d9e2]"}`}>
+        <button type="button" aria-label="Zoom out" onClick={() => setZoom(ZOOM_STEPS[Math.max(0, ZOOM_STEPS.indexOf(zoom) - 1)])} className={`size-9 text-lg font-semibold ${dark ? "text-white hover:bg-white/10" : "bg-white text-[#0e0e12] hover:bg-[#f4f5f8]"}`}>
+          −
+        </button>
+        <span className={`min-w-9 text-center font-mono text-[13px] font-semibold ${dark ? "text-white" : "text-[#0e0e12]"}`}>{zoom}x</span>
+        <button type="button" aria-label="Zoom in" onClick={() => setZoom(ZOOM_STEPS[Math.min(ZOOM_STEPS.length - 1, ZOOM_STEPS.indexOf(zoom) + 1)])} className={`size-9 text-lg font-semibold ${dark ? "text-white hover:bg-white/10" : "bg-white text-[#0e0e12] hover:bg-[#f4f5f8]"}`}>
+          +
+        </button>
+      </div>
+    </div>
+  );
+
+  const mobileZoomRow = (
+    <div className="flex items-center justify-between sm:hidden">
+      {selectionChip}
+      <div role="group" aria-label="Timeline zoom" className="flex items-center overflow-hidden rounded-lg border border-[#d5d9e2]">
+        <button type="button" aria-label="Zoom out" onClick={() => setZoom(ZOOM_STEPS[Math.max(0, ZOOM_STEPS.indexOf(zoom) - 1)])} className="size-11 bg-white text-lg font-semibold text-[#0e0e12]">
+          −
+        </button>
+        <span className="min-w-[30px] text-center font-mono text-[13px] font-semibold">{zoom}x</span>
+        <button type="button" aria-label="Zoom in" onClick={() => setZoom(ZOOM_STEPS[Math.min(ZOOM_STEPS.length - 1, ZOOM_STEPS.indexOf(zoom) + 1)])} className="size-11 bg-white text-lg font-semibold text-[#0e0e12]">
+          +
+        </button>
+      </div>
+    </div>
+  );
+
+  const timeline = (
+    <div className={`overflow-x-auto pb-2 pt-1 ${dark ? "" : "-mx-3 sm:mx-0"}`}>
+      <div className="relative box-border px-[18px] sm:px-3" style={{ width: `${zoom * 100}%` }}>
+        {/* Ruler */}
+        <div className="relative h-7">
+          {Array.from({ length: minutes + 1 }, (_, m) => {
+            const left = `${pct(m * 60)}%`;
+            if (m % labelEvery === 0) {
+              return (
+                <span key={m} className="absolute bottom-0 top-0 flex -translate-x-1/2 flex-col items-center justify-between" style={{ left }}>
+                  <span className={`font-mono text-[11px] font-medium ${dark ? "text-[#a9b3cc]" : "text-[#5b6070]"}`}>{m}m</span>
+                  <span className="h-3 w-px bg-[#7c8394]" />
+                </span>
+              );
+            }
+            return <span key={m} className={`absolute bottom-0 w-px ${dark ? "bg-[#3a4560]" : "bg-[#c3c8d2]"}`} style={{ left, height: m % 5 === 0 ? 9 : 5 }} />;
+          })}
+        </div>
+        {/* Marker lanes */}
+        {ranges.length > 0 ? (
+          <div className="relative mt-1.5" style={{ height: laneCount * 22 }}>
+            {ranges.map((r, idx) => {
+              const n = clips.indexOf(r.clip) + 1;
+              return (
+                <button
+                  key={r.clip.id}
+                  type="button"
+                  title={clipName(r.clip, n - 1)}
+                  onClick={() => jumpToClip(r.clip)}
+                  className={`absolute -translate-x-1/2 whitespace-nowrap rounded-full border px-1.5 font-mono text-[11px] font-semibold leading-[18px] ${
+                    dark ? "border-[#2f7a4f] bg-[#163a27] text-[#bfebd0]" : "border-[#9fd8b4] bg-[#e3f5ea] text-[#146c3a] hover:bg-[#cdeedb]"
+                  }`}
+                  style={{ left: `${pct(r.range[0])}%`, top: lanes[idx] * 22 }}
+                >
+                  #{n}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+        {/* Track */}
+        <div ref={timelineRef} className={`relative mt-1.5 h-[52px] cursor-crosshair touch-none select-none rounded-lg sm:h-12 ${dark ? "bg-[#1a2236]" : "bg-[#eef0f4]"}`} onClick={handleTimelineClick}>
+          {ranges.map((r) => (
+            <span
+              key={r.clip.id}
+              className={`absolute bottom-0 top-0 min-w-[3px] ${dark ? "bg-[#2f7a4f]" : "bg-[#9fd8b4]"}`}
+              style={{ left: `${pct(r.range[0])}%`, width: `${pct(r.range[1]) - pct(r.range[0])}%` }}
+            />
+          ))}
+          <div
+            className={`absolute -bottom-1 -top-1 border-y-2 ${dark ? "border-white bg-white/25" : "border-boys bg-boys/20"}`}
+            style={{ left: `${pct(trimStart)}%`, width: `${Math.max(0, pct(trimEnd) - pct(trimStart))}%` }}
+          >
+            <span
+              role="slider"
+              aria-label="Clip start"
+              aria-valuenow={Math.round(trimStart)}
+              aria-valuemin={0}
+              aria-valuemax={Math.round(videoDuration)}
+              aria-valuetext={formatTimeFull(trimStart)}
+              tabIndex={0}
+              onMouseDown={(e) => handleTrimDrag(e, "start")}
+              onTouchStart={(e) => handleTrimDrag(e, "start")}
+              className={`absolute -bottom-0.5 -top-0.5 right-full flex w-4 cursor-ew-resize items-center justify-center rounded-l-md sm:w-3 ${dark ? "bg-white" : "bg-boys"}`}
+            >
+              <span className={`h-4 w-0.5 rounded-px ${dark ? "bg-boys" : "bg-white"}`} />
+            </span>
+            <span
+              role="slider"
+              aria-label="Clip end"
+              aria-valuenow={Math.round(trimEnd)}
+              aria-valuemin={0}
+              aria-valuemax={Math.round(videoDuration)}
+              aria-valuetext={formatTimeFull(trimEnd)}
+              tabIndex={0}
+              onMouseDown={(e) => handleTrimDrag(e, "end")}
+              onTouchStart={(e) => handleTrimDrag(e, "end")}
+              className={`absolute -bottom-0.5 -top-0.5 left-full flex w-4 cursor-ew-resize items-center justify-center rounded-r-md sm:w-3 ${dark ? "bg-white" : "bg-boys"}`}
+            >
+              <span className={`h-4 w-0.5 rounded-px ${dark ? "bg-boys" : "bg-white"}`} />
+            </span>
+          </div>
+          <span className={`pointer-events-none absolute -bottom-2.5 -top-2.5 w-0.5 ${dark ? "bg-[#ff6b5e]" : "bg-[#d92d20]"}`} style={{ left: `${pct(currentTime)}%` }} />
+        </div>
+      </div>
+    </div>
+  );
+
+  const jumpForm = (
+    <form
+      className="flex gap-1.5 sm:gap-1.5"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const time = parseTime(jumpInput);
+        if (time > 0 && time <= videoDuration) {
+          seekTo(time);
+          setTrimStart(Math.max(0, time - 5));
+          setTrimEnd(Math.min(videoDuration, time + 10));
+          setJumpInput("");
+        }
+      }}
+    >
+      <input value={jumpInput} onChange={(e) => setJumpInput(e.target.value)} placeholder="34:07" aria-label="Jump to time" className={`${fieldClass(dark)} flex-1 sm:flex-none`} />
+      <button type="submit" className={ctl.outline}>
+        Go
+      </button>
+    </form>
+  );
+
+  const setAroundButton = (
+    <button
+      type="button"
+      onClick={() => {
+        setTrimStart(Math.max(0, currentTime - 5));
+        setTrimEnd(Math.min(videoDuration, currentTime + 10));
+      }}
+      className={ctl.outline}
+    >
+      Set around playhead
+    </button>
+  );
+
+  const createButton = (
+    <button
+      type="button"
+      onClick={handleCreateClip}
+      disabled={cutDisabled}
+      title={cutTitle}
+      className={`inline-flex min-h-[52px] items-center justify-center gap-2 whitespace-nowrap rounded-[10px] px-6 text-[15px] font-bold transition sm:ml-auto sm:min-h-12 ${
+        cutDisabled
+          ? dark
+            ? "cursor-not-allowed bg-white/15 text-[#a9b3cc]"
+            : "cursor-not-allowed bg-[#e3e6ec] text-[#7c8394]"
+          : dark
+            ? "bg-white text-boys hover:bg-[#eef0f4]"
+            : "bg-boys text-white hover:bg-boys-deep"
+      }`}
+    >
+      {creating ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
+      {creating ? "Creating clip…" : `Create clip (${trimDuration.toFixed(0)}s)`}
+    </button>
+  );
+
+  const trimRow = dark ? (
+    <div className="flex flex-wrap items-center gap-2.5">
+      {jumpForm}
+      <span className="h-7 w-px bg-[#3a4560]" />
+      <span className={ctl.label}>Start</span>
+      <TimeInput value={trimStart} onChange={setTrimStart} ariaLabel="Start" className={fieldClass(true)} />
+      <span className={ctl.label}>End</span>
+      <TimeInput value={trimEnd} onChange={setTrimEnd} ariaLabel="End" className={fieldClass(true)} />
+      <span className="font-mono text-sm font-semibold text-[#dce2ef]">{trimDuration.toFixed(0)}s</span>
+      {setAroundButton}
+      {createButton}
+    </div>
+  ) : (
+    <div className="flex flex-col gap-2.5 border-t border-[#e3e6ec] pt-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-3 sm:pt-3.5">
+      <label className="flex flex-col gap-1 sm:w-auto">
+        <span className={`${ctl.label} hidden sm:block`}>Jump to</span>
+        {jumpForm}
+      </label>
+      <span className="hidden h-10 w-px bg-[#e3e6ec] sm:block" />
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_64px] gap-2 sm:contents">
+        <label className="flex min-w-0 flex-col gap-1">
+          <span className={ctl.label}>Start</span>
+          <TimeInput value={trimStart} onChange={setTrimStart} ariaLabel="Start" className={fieldClass(false)} />
+        </label>
+        <label className="flex min-w-0 flex-col gap-1">
+          <span className={ctl.label}>End</span>
+          <TimeInput value={trimEnd} onChange={setTrimEnd} ariaLabel="End" className={fieldClass(false)} />
+        </label>
+        <div className="flex flex-col gap-1">
+          <span className={ctl.label}>Duration</span>
+          <span className="flex h-11 items-center font-mono text-[15px] font-semibold text-[#0e0e12] sm:h-10 sm:text-sm">{trimDuration.toFixed(0)}s</span>
+        </div>
+      </div>
+      {setAroundButton}
+      {createButton}
+      {cutTitle ? <p className="w-full text-xs text-[#5b6070]">{cutTitle}</p> : null}
+    </div>
+  );
+
+  if (maximized) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col bg-[#0a0f1c] text-white md:grid md:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-3 pb-4 pt-3 sm:px-5">
+          <div className="flex h-11 items-center gap-3 overflow-x-auto">
+            <span className="font-display whitespace-nowrap text-[26px] leading-none tracking-[0.02em]">{title}</span>
+            <span className="hidden whitespace-nowrap text-[13px] font-medium text-[#a9b3cc] sm:inline">Clip editor</span>
+            {sources.length > 1 ? sourcePills : null}
+            {selectionChip}
+            <button type="button" onClick={() => setMaximized(false)} className="ml-auto inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-[#3a4560] px-3.5 text-[13px] font-semibold text-white hover:bg-white/10">
+              Exit fullscreen <span className="font-mono text-xs text-[#a9b3cc]">Esc</span>
+            </button>
+          </div>
+          <div className="flex min-h-0 flex-1 items-center justify-center">{player}</div>
+          {controls}
+          {timeline}
+          {trimRow}
+        </div>
         {clipsPanel}
       </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_380px] md:items-start md:gap-6 md:rounded-xl md:border md:border-[#e3e6ec] md:bg-white md:p-5">
+      <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-[#e3e6ec] bg-white p-3 md:gap-3.5 md:rounded-none md:border-0 md:p-0">
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="font-display text-[26px] leading-none tracking-[0.02em] text-[#0e0e12] sm:text-[28px]">Clip editor</h2>
+          <button type="button" onClick={() => setMaximized(true)} className="ml-auto inline-flex h-11 items-center rounded-lg border border-[#d5d9e2] bg-white px-3 text-[13px] font-semibold text-[#0e0e12] hover:bg-[#f4f5f8] sm:ml-0 sm:h-8 sm:px-2.5">
+            Fullscreen
+          </button>
+          {sources.length > 1 ? <div className="w-full sm:w-auto">{sourcePills}</div> : null}
+          <span className="hidden sm:ml-auto sm:inline-flex">{selectionChip}</span>
+        </div>
+        {player}
+        {controls}
+        {mobileZoomRow}
+        {timeline}
+        {trimRow}
+      </div>
+      {clipsPanel}
     </div>
   );
 }

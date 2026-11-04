@@ -2,7 +2,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { ArrowLeft } from "lucide-react";
 import { AdminMatchSkeleton } from "@/components/skeletons";
 import { teams } from "@/lib/teams";
 import { formatMatchDate } from "@/lib/videos/format";
@@ -27,19 +26,22 @@ async function Match({ params }: { params: Promise<{ id: string }> }) {
   const { project, video, view } = state;
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <Link href="/admin" className="inline-flex items-center gap-1.5 text-sm text-neutral-600 hover:underline">
-          <ArrowLeft className="size-4" aria-hidden="true" /> All matches
+    <div className="flex flex-col gap-3 sm:gap-5">
+      <div className="flex flex-col gap-1 sm:gap-1.5">
+        <Link href="/admin" className="inline-flex min-h-11 w-fit items-center text-sm font-semibold text-boys hover:underline sm:min-h-8">
+          ← All matches
         </Link>
-        <h1 className="mt-2 font-display text-5xl leading-none tracking-wide text-neutral-900">{project.title}</h1>
-        <p className="mt-1 text-neutral-600">
-          {teams[project.team].name} · {formatMatchDate(project.match_date)}
-          {project.opponent ? ` · vs ${project.opponent}` : ""}
-        </p>
+        <h1 className="font-display text-[48px] leading-[0.9] text-[#0e0e12] sm:text-[64px]">{project.title}</h1>
+        <div className="flex flex-wrap items-center gap-2 text-[13px] font-medium text-[#5b6070] sm:gap-2.5 sm:text-[15px]">
+          <span className="rounded-full bg-[#e6ebf5] px-2 py-0.5 text-[11px] font-semibold text-boys sm:px-2.5 sm:py-[3px] sm:text-xs">{teams[project.team].name}</span>
+          <span>
+            {formatMatchDate(project.match_date)}
+            {project.opponent ? ` · vs ${project.opponent}` : ""}
+          </span>
+        </div>
       </div>
-      <StatusPanel projectId={project.id} team={project.team} video={video} view={view} sourceSize={state.sourceSize} />
-      {video?.status === "done" ? <Editor state={state} team={project.team} /> : null}
+      <StatusPanel projectId={project.id} team={project.team} teamName={teams[project.team].name} video={video} view={view} sourceSize={state.sourceSize} />
+      {video?.status === "done" ? <Editor state={state} team={project.team} title={project.title} /> : null}
     </div>
   );
 }
