@@ -42,3 +42,18 @@ const CONTENT_TYPES: Record<VideoExt, string> = {
 export function contentTypeForExt(ext: VideoExt): string {
   return CONTENT_TYPES[ext];
 }
+
+/** Streaming renditions of the full match, best first (the master playlist lists them in this order). */
+export const HLS_RENDITIONS = ["1080p", "720p"] as const;
+export type HlsRendition = (typeof HLS_RENDITIONS)[number];
+
+/** Folder holding the HLS copy of a full match: `{videoId}/hls`. Stored in `videos.hls_path`. */
+export function hlsPrefix(videoId: string): string {
+  return `${videoId}/hls`;
+}
+
+/** Every object of the HLS copy: master playlist, then per rendition its playlist and single segment file. */
+export function hlsKeys(videoId: string): string[] {
+  const prefix = hlsPrefix(videoId);
+  return [`${prefix}/master.m3u8`, ...HLS_RENDITIONS.flatMap((r) => [`${prefix}/${r}/index.m3u8`, `${prefix}/${r}/index.ts`])];
+}

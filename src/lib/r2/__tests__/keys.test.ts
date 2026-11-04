@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { autoClipKey, contentTypeForExt, customClipKey, extFromName, reelKey, videoKey } from "@/lib/r2/keys";
+import { autoClipKey, contentTypeForExt, customClipKey, extFromName, hlsKeys, hlsPrefix, reelKey, videoKey } from "@/lib/r2/keys";
 
 describe("R2 object keys (PeakClip layout)", () => {
   it("builds the full-match key under the uploader's folder, lower-casing the extension", () => {
@@ -35,5 +35,21 @@ describe("contentTypeForExt", () => {
     expect(contentTypeForExt("mov")).toBe("video/quicktime");
     expect(contentTypeForExt("avi")).toBe("video/x-msvideo");
     expect(contentTypeForExt("webm")).toBe("video/webm");
+  });
+});
+
+describe("hls keys", () => {
+  it("hlsPrefix is {videoId}/hls", () => {
+    expect(hlsPrefix("vid")).toBe("vid/hls");
+  });
+
+  it("hlsKeys lists the master playlist plus one playlist and one segment file per rendition", () => {
+    expect(hlsKeys("vid")).toEqual([
+      "vid/hls/master.m3u8",
+      "vid/hls/1080p/index.m3u8",
+      "vid/hls/1080p/index.ts",
+      "vid/hls/720p/index.m3u8",
+      "vid/hls/720p/index.ts",
+    ]);
   });
 });

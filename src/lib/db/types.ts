@@ -41,6 +41,8 @@ export type Video = {
   progress: number | null;
   /** True while the worker rebuilds the reel after a clip was deleted; the old reel keeps playing. */
   reel_stale: boolean;
+  /** Folder of the HLS streaming copy (`{videoId}/hls`), null until the worker has prepared it. */
+  hls_path: string | null;
   created_at: string;
 };
 

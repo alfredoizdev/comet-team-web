@@ -21,7 +21,7 @@ import { deleteClip } from "../actions";
 const project: Project = { id: "p1", user_id: "u1", title: "M", team: "girls", match_date: null, opponent: null, created_at: "" };
 const video: Video = {
   id: "v1", project_id: "p1", file_path: "u1/v1/video.mp4", status: "done", error_message: null, duration: 100,
-  highlight_reel_path: "v1/highlight_reel.mp4", is_published: true, published_at: "x", source_deleted_at: null, source_url: null, stage: null, progress: null, reel_stale: false, created_at: "",
+  highlight_reel_path: "v1/highlight_reel.mp4", is_published: true, published_at: "x", source_deleted_at: null, source_url: null, stage: null, progress: null, reel_stale: false, hls_path: null, created_at: "",
 };
 const clip = (id: string, score: number): ClipWithPlayer => ({ id, video_id: "v1", start_time: 1, end_time: 10, score, file_path: `v1/clip_${id}.mp4`, player_id: null, player_name: null, created_at: "" });
 
