@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Play } from "lucide-react";
-import { HlsVideo } from "@/components/hls-video";
+import { BigPlayVideo } from "@/components/big-play-video";
 import { MomentsGallery } from "@/components/moments-gallery";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VideoPoster } from "@/components/video-poster";
@@ -22,12 +22,7 @@ export function MatchCard({ match, team, more }: { match: PublicMatch; team: Tea
   const highlights = (
     <div className="flex flex-col gap-6 md:gap-8">
       {match.reelUrl ? (
-        <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-[#0e1424] md:rounded-2xl">
-          <VideoPoster src={match.reelUrl} controls playsInline preload="metadata" className="size-full" />
-          <span className="pointer-events-none absolute left-2.5 top-2.5 rounded-full bg-black/65 px-2.5 py-1 text-xs font-semibold text-white md:left-5 md:top-5 md:px-3.5 md:py-1.5 md:text-sm">
-            Highlight reel · {reel}
-          </span>
-        </div>
+        <BigPlayVideo src={match.reelUrl} label={`Highlight reel · ${reel}`} team={team} ariaLabel="Play highlight reel" />
       ) : (
         <div role="status" className="flex aspect-video w-full flex-col items-center justify-center gap-2 rounded-xl bg-[#eef0f4] px-4 text-center md:rounded-2xl">
           <span className="text-base font-semibold text-[#0e0e12]">Highlight reel is being rebuilt</span>
@@ -60,7 +55,7 @@ export function MatchCard({ match, team, more }: { match: PublicMatch; team: Tea
 
       {match.fullMatch ? (
         <Tabs defaultValue="highlights" className="gap-5 md:gap-8">
-          <TabsList className="grid h-auto w-full grid-cols-2 gap-2 rounded-none bg-transparent p-0 md:gap-3">
+          <TabsList className="grid h-auto w-full grid-cols-2 gap-2 rounded-none bg-transparent p-0 group-data-horizontal/tabs:h-auto md:gap-3">
             <TabCard team={team} value="highlights" title="Highlights" sub={`${reel} reel · ${moments} moments`} />
             <TabCard team={team} value="full" title="Full match" sub={full ? `${full} · the whole game` : "The whole game"} />
           </TabsList>
@@ -107,7 +102,7 @@ function TabCard({ team, value, title, sub }: { team: Team; value: string; title
   return (
     <TabsTrigger
       value={value}
-      className={`h-auto min-h-16 flex-col items-start justify-center gap-1 rounded-xl border-2 border-[#e3e6ec] bg-white px-3.5 py-2.5 text-left whitespace-normal shadow-none transition ${team.hoverBorder} md:gap-1.5 md:rounded-[14px] md:px-6 md:py-4 ${team.text} ${team.tabActive} data-active:border-transparent data-active:shadow-none`}
+      className={`h-auto min-h-16 flex-col items-start justify-center gap-1 rounded-xl border-2 border-[#e3e6ec] bg-white px-3.5 py-2.5 text-left whitespace-normal shadow-none transition ${team.hoverBorder} md:gap-1.5 md:rounded-[14px] md:px-6 md:py-4 ${team.text} ${team.tabActive} data-active:border-transparent group-data-[variant=default]/tabs-list:data-active:shadow-none`}
     >
       <span className="font-display text-[26px] leading-none tracking-[0.02em] md:text-[32px]">{title}</span>
       <span className="text-xs font-medium opacity-80 md:text-sm">{sub}</span>
@@ -118,6 +113,9 @@ function TabCard({ team, value, title, sub }: { team: Team; value: string; title
 function FullMatchPlayer({ source, title, team, length }: { source: PublicFullMatch; title: string; team: Team; length: string | null }) {
   return (
     <div className="flex flex-col gap-2.5 md:gap-3.5">
+      {source.kind === "hls" ? (
+        <BigPlayVideo src={source.url} label={length ? `Full match · ${length}` : "Full match"} team={team} ariaLabel="Play full match" />
+      ) : (
       <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-black md:rounded-2xl">
         {source.kind === "youtube" ? (
           <iframe
@@ -127,10 +125,9 @@ function FullMatchPlayer({ source, title, team, length }: { source: PublicFullMa
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowFullScreen
           />
-        ) : (
-          <HlsVideo src={source.url} controls playsInline preload="metadata" className="size-full" />
-        )}
+        ) : null}
       </div>
+      )}
       <div className="flex items-center justify-between gap-3">
         <span className="text-sm font-medium text-[#5b6070] md:text-[15px]">Full match{length ? ` · ${length}` : ""}</span>
         {source.kind === "youtube" ? (
