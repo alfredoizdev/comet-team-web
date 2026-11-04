@@ -8,7 +8,7 @@ export type VideoView = {
   canReprocess: boolean;
 };
 
-type VideoLike = Pick<Video, "status" | "error_message" | "highlight_reel_path" | "source_deleted_at">;
+type VideoLike = Pick<Video, "status" | "error_message" | "highlight_reel_path" | "source_deleted_at"> & Partial<Pick<Video, "reel_stale">>;
 
 /** Worker outcomes written as `status = error` with a machine-readable message. */
 const ERROR_LABELS: Record<string, string> = {
@@ -32,6 +32,10 @@ export function describeVideo(video: VideoLike | null): VideoView {
       return { label: "Processing", tone: "progress", canPublish: false, canCut: false, canReprocess: hasSource };
     case "done":
       if (video.highlight_reel_path) {
+        if (video.reel_stale) {
+          // Old reel keeps playing while the worker rebuilds it: nothing is blocked.
+          return { label: "Updating highlight reel", tone: "progress", canPublish: true, canCut: hasSource, canReprocess: hasSource };
+        }
         return { label: "Ready", tone: "ok", canPublish: true, canCut: hasSource, canReprocess: hasSource };
       }
       return { label: "Rebuilding highlight reel", tone: "progress", canPublish: false, canCut: hasSource, canReprocess: hasSource };

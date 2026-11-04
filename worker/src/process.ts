@@ -155,7 +155,7 @@ export async function regenerateHighlightReel(videoId: string) {
     await deleteObjects([key]);
     await uploadFile(key, reelPath, "video/mp4");
 
-    await supabase.from("videos").update({ highlight_reel_path: key, stage: null, progress: 100 }).eq("id", videoId);
+    await supabase.from("videos").update({ highlight_reel_path: key, reel_stale: false, stage: null, progress: 100 }).eq("id", videoId);
     console.log(`[reel:${videoId}] Highlight reel regenerated with ${clips.length} clips!`);
   } finally {
     if (existsSync(tmpDir)) rmSync(tmpDir, { recursive: true, force: true });

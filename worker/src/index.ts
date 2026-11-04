@@ -50,13 +50,13 @@ async function processCustomClips() {
 }
 
 async function regenerateStaleReels() {
-  // Only videos that still have a ready clip; a video with none would otherwise
-  // match every poll and block regeneration for everyone else.
+  // Reels missing (null) or flagged stale after a clip deletion. Only videos that
+  // still have a ready clip; one with none would match every poll forever.
   const { data: videos, error } = await supabase
     .from("videos")
     .select("id, clips!inner(id)")
     .eq("status", "done")
-    .is("highlight_reel_path", null)
+    .or("highlight_reel_path.is.null,reel_stale.eq.true")
     .gt("clips.score", 0)
     .order("created_at", { ascending: true })
     .limit(1);

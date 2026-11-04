@@ -21,7 +21,7 @@ const project = (team: Project["team"]): Project => ({
 });
 const video = (over: Partial<Video>): Video => ({
   id: "v1", project_id: "p1", file_path: "u1/v1/video.mp4", status: "done", error_message: null, duration: 100,
-  highlight_reel_path: "v1/highlight_reel.mp4", is_published: false, published_at: null, source_deleted_at: null, source_url: null, stage: null, progress: null,
+  highlight_reel_path: "v1/highlight_reel.mp4", is_published: false, published_at: null, source_deleted_at: null, source_url: null, stage: null, progress: null, reel_stale: false,
   created_at: "", ...over,
 });
 

@@ -88,6 +88,7 @@ export function Editor({ state, team }: { state: MatchState; team: Team }) {
   const [buffering, setBuffering] = useState(false);
   const [mediaDuration, setMediaDuration] = useState(0);
   const [jumpInput, setJumpInput] = useState("");
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
 
   const activeSource = sources[sourceIndex] ?? sources[0];
   const videoUrl = activeSource?.kind === "video" ? activeSource.url : "";
@@ -95,13 +96,14 @@ export function Editor({ state, team }: { state: MatchState; team: Team }) {
   const videoDuration = activeSource?.duration || mediaDuration || 0;
   const isFullMatch = activeSource?.label === "Full match";
   const hasPending = clips.some((c) => c.score === 0);
+  const reelUpdating = hasPending || video.reel_stale;
 
-  // Poll while a custom clip is being cut (PeakClip polled every 5 s too).
+  // Poll while a custom clip is being cut or the reel is being rebuilt (PeakClip polled every 5 s too).
   useEffect(() => {
-    if (!hasPending) return;
+    if (!reelUpdating) return;
     const id = setInterval(() => router.refresh(), 5000);
     return () => clearInterval(id);
-  }, [hasPending, router]);
+  }, [reelUpdating, router]);
 
   useEffect(() => {
     const el = videoRef.current;
@@ -259,11 +261,17 @@ export function Editor({ state, team }: { state: MatchState; team: Team }) {
   }
 
   async function handleDeleteClip(clip: Clip) {
+    setDeletingIds((prev) => new Set(prev).add(clip.id));
     try {
       await deleteClip(clip.id);
-      toast.success("Clip deleted. The highlight reel will be rebuilt.");
+      toast.success("Clip deleted. The highlight reel is being updated.");
       router.refresh();
     } catch (err) {
+      setDeletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(clip.id);
+        return next;
+      });
       toast.error(err instanceof Error ? err.message : "Failed to delete clip");
     }
   }
@@ -281,12 +289,24 @@ export function Editor({ state, team }: { state: MatchState; team: Team }) {
             const url = clipUrls[clip.id];
             const range = clipRange(clip);
             const current = !!range && currentTime >= range[0] && currentTime <= range[1];
+            const deleting = deletingIds.has(clip.id);
             return (
               <div
                 key={clip.id}
-                className={`group relative w-36 shrink-0 cursor-pointer overflow-hidden rounded-lg border transition md:flex md:w-auto md:gap-3 md:p-2 ${current ? `${team === "girls" ? "border-girls" : "border-boys"} ring-2 ring-neutral-200` : "border-neutral-200"}`}
+                className={`group relative w-36 shrink-0 cursor-pointer overflow-hidden rounded-lg border transition md:flex md:w-auto md:gap-3 md:p-2 ${
+                  deleting
+                    ? "pointer-events-none border-red-400 bg-red-50 opacity-60"
+                    : current
+                      ? `${team === "girls" ? "border-girls" : "border-boys"} ring-2 ring-neutral-200`
+                      : "border-neutral-200"
+                }`}
                 onClick={() => jumpToClip(clip)}
               >
+                {deleting ? (
+                  <span className="absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                    <Loader2 className="size-3 animate-spin" aria-hidden="true" /> Removing
+                  </span>
+                ) : null}
                 <div className="relative aspect-video bg-neutral-900 md:w-28 md:shrink-0 md:rounded-md">
                   {url ? (
                     <video src={url} className="size-full object-cover" muted preload="metadata" />
@@ -376,6 +396,11 @@ export function Editor({ state, team }: { state: MatchState; team: Team }) {
               </button>
             ))}
           </div>
+        ) : null}
+        {reelUpdating ? (
+          <span className="ml-2 inline-flex shrink-0 items-center gap-1.5 text-xs text-neutral-600">
+            <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> Updating highlight reel…
+          </span>
         ) : null}
         <div className="flex-1" />
         <Badge className={`${accent.bg} shrink-0 text-[11px] text-white`}>

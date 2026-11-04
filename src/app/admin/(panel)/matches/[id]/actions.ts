@@ -76,8 +76,8 @@ export async function deleteClip(clipId: string): Promise<void> {
 
   const remaining = (await repo.listClips(found.video.id)).filter((c) => c.id !== clipId && c.score > 0);
   if (remaining.length > 0) {
-    // The worker rebuilds the reel from the clips that are left.
-    await repo.updateVideo(found.video.id, { highlight_reel_path: null });
+    // The current reel keeps playing; the worker rebuilds it in the background.
+    await repo.updateVideo(found.video.id, { reel_stale: true });
     return;
   }
   // Nothing left to build a reel from: take it down and tell the coach.

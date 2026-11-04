@@ -22,6 +22,10 @@ describe("describeVideo", () => {
     const v = describeVideo({ ...base, status: "done", highlight_reel_path: "v1/highlight_reel.mp4", source_deleted_at: "2026-11-01T00:00:00Z" });
     expect(v).toMatchObject({ canPublish: true, canCut: false, canReprocess: false });
   });
+  it("done with a stale reel keeps everything available while the worker updates it", () => {
+    const v = describeVideo({ ...base, status: "done", highlight_reel_path: "v1/highlight_reel.mp4", reel_stale: true });
+    expect(v).toMatchObject({ label: "Updating highlight reel", tone: "progress", canPublish: true, canCut: true });
+  });
   it("done without reel is rebuilding and not publishable", () => {
     const v = describeVideo({ ...base, status: "done" });
     expect(v).toMatchObject({ label: "Rebuilding highlight reel", tone: "progress", canPublish: false, canCut: true });

@@ -53,7 +53,9 @@ export function StatusPanel({ projectId, video, view }: { projectId: string; vid
   }
 
   const note =
-    video?.status === "error" && video.error_message === "no_audio"
+    video?.status === "done" && video.reel_stale
+      ? "The highlight reel is being updated. The current one keeps playing until the new one is ready."
+      : video?.status === "error" && video.error_message === "no_audio"
       ? "This video has no usable audio, so no highlights could be detected. You can delete the match or reprocess it."
       : video?.status === "error"
         ? `Processing failed: ${video.error_message ?? "unknown error"}.`

@@ -39,6 +39,8 @@ export type Video = {
   /** Worker progress while status is processing. */
   stage: string | null;
   progress: number | null;
+  /** True while the worker rebuilds the reel after a clip was deleted; the old reel keeps playing. */
+  reel_stale: boolean;
   created_at: string;
 };
 
