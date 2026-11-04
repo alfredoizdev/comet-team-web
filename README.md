@@ -52,6 +52,18 @@ pnpm worker      # worker only (same .env.local)
 pnpm test        # vitest
 ```
 
+### Worker as a macOS service (installed on Alfredo's Mac)
+
+`~/Library/LaunchAgents/com.cometsc.worker.plist` starts the worker at login and restarts it
+if it crashes; it logs to `~/Library/Logs/comets-worker.log`. Because of this, run `pnpm dev`
+(web only) for day-to-day development instead of `pnpm dev:all`, or two workers will run.
+
+```bash
+pnpm worker:log       # follow the service log
+pnpm worker:restart   # restart it after changing worker/ code (it does not hot-reload)
+launchctl bootout gui/$(id -u)/com.cometsc.worker   # stop and uninstall the service
+```
+
 The worker polls Supabase every 5 s. It only processes while it is running, so a match
 uploaded while the Mac is off stays "Queued" until the worker starts. When a match is
 done it deletes the full video from R2 (set `DELETE_SOURCE_AFTER_PROCESSING=false` to
