@@ -79,7 +79,11 @@ export async function setClipPlayer(clipId: string, playerId: string | null): Pr
 
 export async function listPlayerNames(team: Team): Promise<string[]> {
   const { data, error } = await db().from("players").select("name").eq("team", team).order("name");
-  if (error) fail("listPlayerNames", error);
+  if (error) {
+    // The picker is optional: never let it take the match page down.
+    console.error("listPlayerNames:", error.message);
+    return [];
+  }
   return ((data as { name: string }[]) ?? []).map((p) => p.name);
 }
 
