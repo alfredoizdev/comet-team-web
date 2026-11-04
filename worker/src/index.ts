@@ -1,5 +1,6 @@
 // Ported from PeakClip apps/worker/src/index.ts without overlays and AI analysis.
 import { createClient } from "@supabase/supabase-js";
+import { generateHls } from "./hls";
 import { processCustomClip, processVideo, regenerateHighlightReel } from "./process";
 
 const POLL_INTERVAL = 5000;
@@ -71,6 +72,34 @@ async function regenerateStaleReels() {
   }
 }
 
+/**
+ * Streaming copy for finished uploads whose master is still in R2 and that have no
+ * HLS yet. Runs after clips/reels so highlights are never delayed by a 30-minute encode.
+ * A failure is recorded as `error_message = hls_failed: …` (status stays done; Reprocess clears it).
+ */
+async function generatePendingHls() {
+  const { data: videos, error } = await supabase
+    .from("videos")
+    .select("id, file_path, duration")
+    .eq("status", "done")
+    .is("source_url", null)
+    .is("source_deleted_at", null)
+    .is("hls_path", null)
+    .is("error_message", null)
+    .order("created_at", { ascending: true })
+    .limit(1);
+  if (error || !videos || videos.length === 0) return;
+  const video = videos[0];
+
+  console.log(`Preparing full match for streaming: ${video.id}`);
+  try {
+    await generateHls(video);
+  } catch (err) {
+    console.error(`Error preparing HLS for ${video.id}:`, message(err));
+    await supabase.from("videos").update({ error_message: `hls_failed: ${message(err).slice(0, 300)}`, stage: null }).eq("id", video.id);
+  }
+}
+
 async function poll() {
   console.log("Comets worker started. Polling for videos...");
   while (true) {
@@ -87,6 +116,7 @@ async function poll() {
       }
       await processCustomClips();
       await regenerateStaleReels();
+      await generatePendingHls();
     } catch (err) {
       console.error("Poll error:", message(err));
     }

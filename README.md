@@ -68,6 +68,10 @@ The worker polls Supabase every 5 s. It only processes while it is running, so a
 uploaded while the Mac is off stays "Queued" until the worker starts. When a match is
 done the full video stays in R2 so coaches can cut new clips later (set
 `DELETE_SOURCE_AFTER_PROCESSING=true` to delete originals and save storage).
+After the clips it prepares a streaming copy of the full match (HLS, 1080p + 720p, under
+`{videoId}/hls/`) that parents watch from the "Full match" tab; `HLS_VIDEO_ENCODER` picks the
+ffmpeg encoder. The app serves the playlists from `/api/hls/...` with signed segment URLs, so the
+R2 CORS rule must allow `GET` and `HEAD` (besides `PUT`) for the site origins.
 
 ## Pages
 
