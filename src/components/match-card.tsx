@@ -102,7 +102,7 @@ function TabCard({ team, value, title, sub }: { team: Team; value: string; title
   return (
     <TabsTrigger
       value={value}
-      className={`h-auto min-h-16 flex-col items-start justify-center gap-1 rounded-xl border-2 border-[#e3e6ec] bg-white px-3.5 py-2.5 text-left whitespace-normal shadow-none transition ${team.hoverBorder} md:gap-1.5 md:rounded-[14px] md:px-6 md:py-4 ${team.text} ${team.tabActive} data-active:border-transparent group-data-[variant=default]/tabs-list:data-active:shadow-none`}
+      className={`h-auto min-h-16 flex-col items-start justify-center gap-1 rounded-xl border-2 border-[#e3e6ec] bg-white px-3.5 py-2.5 text-left whitespace-normal shadow-none transition ${team.hoverBorder} md:gap-1.5 md:rounded-[14px] md:px-6 md:py-4 ${team.text} ${team.tabActive} data-active:border-transparent group-data-[variant=default]/tabs-list:data-active:shadow-none focus-visible:ring-0 focus-visible:border-[#e3e6ec] data-active:focus-visible:border-transparent`}
     >
       <span className="font-display text-[26px] leading-none tracking-[0.02em] md:text-[32px]">{title}</span>
       <span className="text-xs font-medium opacity-80 md:text-sm">{sub}</span>
