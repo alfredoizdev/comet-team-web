@@ -117,6 +117,13 @@ export async function headObject(key: string): Promise<{ size: number } | null> 
   }
 }
 
+/** Small text object (a playlist) as a string. */
+export async function getObjectText(key: string): Promise<string> {
+  const res = await getR2().send(new GetObjectCommand({ Bucket: bucket(), Key: key }));
+  if (!res.Body) throw new Error(`Empty body reading ${key}`);
+  return res.Body.transformToString();
+}
+
 export async function deleteObjects(keys: string[]): Promise<void> {
   if (keys.length === 0) return;
   await getR2().send(
