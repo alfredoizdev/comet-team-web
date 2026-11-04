@@ -14,6 +14,7 @@ import { teams } from "@/lib/teams";
 import type { VideoView } from "@/lib/videos/status";
 import { assignPlayer, createCustomClip, deleteClip, type MatchState } from "./actions";
 import { NameCombobox } from "@/components/name-combobox";
+import { useHls } from "@/components/hls-video";
 import { YouTubePlayer, type PlayerHandle } from "./youtube-player";
 
 function formatTimeFull(seconds: number): string {
@@ -109,6 +110,8 @@ export function Editor({ state, team }: { state: MatchState; team: Team }) {
 
   const activeSource = sources[sourceIndex] ?? sources[0];
   const videoUrl = activeSource?.kind === "video" ? activeSource.url : "";
+  // The full match streams as HLS (hls.js where needed); clips and reels are plain files.
+  useHls(videoRef, videoUrl);
   const isYouTube = activeSource?.kind === "youtube";
   const videoDuration = activeSource?.duration || mediaDuration || 0;
   const isFullMatch = activeSource?.label === "Full match";
@@ -457,7 +460,7 @@ export function Editor({ state, team }: { state: MatchState; team: Team }) {
                 onClick={togglePlay}
               />
             ) : (
-              <video ref={videoRef} src={videoUrl} className={maximized ? "size-full object-contain" : "max-h-full max-w-full object-contain"} onClick={togglePlay} preload="metadata" playsInline />
+              <video ref={videoRef} className={maximized ? "size-full object-contain" : "max-h-full max-w-full object-contain"} onClick={togglePlay} preload="metadata" playsInline />
             )}
             {!videoReady || buffering ? (
               <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/60 text-white">

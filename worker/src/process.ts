@@ -85,6 +85,8 @@ async function cutClip(inputPath: string, start: number, end: number, outPath: s
     "-c:v", "libx264",
     "-preset", "veryfast",
     "-crf", "20",
+    "-maxrate", "8M",
+    "-bufsize", "16M",
     "-pix_fmt", "yuv420p",
     "-c:a", "aac",
     "-b:a", "128k",

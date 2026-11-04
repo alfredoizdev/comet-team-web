@@ -38,7 +38,7 @@ async function Match({ params }: { params: Promise<{ id: string }> }) {
           {project.opponent ? ` · vs ${project.opponent}` : ""}
         </p>
       </div>
-      <StatusPanel projectId={project.id} video={video} view={view} />
+      <StatusPanel projectId={project.id} video={video} view={view} sourceSize={state.sourceSize} />
       {video?.status === "done" ? <Editor state={state} team={project.team} /> : null}
     </div>
   );

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { assertCanManage, requireMember } from "@/lib/auth/members";
 import type { Team } from "@/lib/db/types";
 import { deleteObjects, presignGet } from "@/lib/r2/client";
+import { hlsKeys } from "@/lib/r2/keys";
 import * as repo from "@/lib/videos/repo";
 import { describeVideo } from "@/lib/videos/status";
 
@@ -98,9 +99,28 @@ export async function deleteMatch(projectId: string): Promise<void> {
     const clips = await repo.listClips(video.id);
     const keys = [...clips.map((c) => c.file_path), ...(video.highlight_reel_path ? [video.highlight_reel_path] : [])];
     if (!video.source_deleted_at) keys.push(video.file_path);
+    if (video.hls_path) keys.push(...hlsKeys(video.id));
     await deleteObjects(keys);
   }
   await repo.deleteProjectRow(projectId);
   revalidatePath(`/${project.team}`);
+  revalidatePath("/admin");
+}
+
+/**
+ * Frees the storage of the uploaded master once the streaming copy exists. The match
+ * keeps streaming and its clips; only cutting new clips is no longer possible.
+ */
+export async function deleteOriginal(videoId: string): Promise<void> {
+  const m = await requireMember();
+  const found = await repo.getVideoWithProject(videoId);
+  if (!found) throw new Error("Video not found");
+  assertCanManage(m, found.project.team);
+  const { video } = found;
+  if (video.source_url) throw new Error("This match streams from YouTube; there is no original to delete");
+  if (video.source_deleted_at) throw new Error("The original was already deleted");
+  if (!video.hls_path) throw new Error("Wait until the streaming copy of the full match is ready");
+  await deleteObjects([video.file_path]);
+  await repo.updateVideo(videoId, { source_deleted_at: new Date().toISOString() });
   revalidatePath("/admin");
 }

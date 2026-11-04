@@ -19,7 +19,8 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import type { VideoView } from "@/lib/videos/status";
 import type { Video } from "@/lib/db/types";
-import { deleteMatch, reprocessMatch, setPublished } from "../../actions";
+import { formatGigabytes } from "@/lib/videos/format";
+import { deleteMatch, deleteOriginal, reprocessMatch, setPublished } from "../../actions";
 
 const toneClass: Record<VideoView["tone"], string> = {
   neutral: "bg-neutral-200 text-neutral-700",
@@ -28,16 +29,16 @@ const toneClass: Record<VideoView["tone"], string> = {
   error: "bg-red-100 text-red-800",
 };
 
-export function StatusPanel({ projectId, video, view }: { projectId: string; video: Video | null; view: VideoView }) {
+export function StatusPanel({ projectId, video, view, sourceSize }: { projectId: string; video: Video | null; view: VideoView; sourceSize?: number | null }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
   // While the worker is busy, refresh every 5 s (PeakClip polled the same way).
   useEffect(() => {
-    if (view.tone !== "progress") return;
+    if (view.tone !== "progress" && !video?.stage) return;
     const id = setInterval(() => router.refresh(), 5000);
     return () => clearInterval(id);
-  }, [view.tone, router]);
+  }, [view.tone, video?.stage, router]);
 
   function run(label: string, fn: () => Promise<void>, after?: () => void) {
     startTransition(async () => {
@@ -59,14 +60,20 @@ export function StatusPanel({ projectId, video, view }: { projectId: string; vid
       ? "This video has no usable audio, so no highlights could be detected. You can delete the match or reprocess it."
       : video?.status === "error"
         ? `Processing failed: ${video.error_message ?? "unknown error"}.`
-        : video?.source_deleted_at
-          ? "The full match was removed after processing, so new clips can't be cut."
+        : video?.error_message?.startsWith("hls_failed")
+          ? "The full match could not be prepared for streaming. Reprocess the match to try again."
+          : video?.status === "done" && video.stage
+            ? "Highlights are ready and can be published. The full match is being prepared for streaming in the background."
+            : video?.source_deleted_at
+              ? video.hls_path
+                ? "The original file was deleted. The full match keeps streaming from its web copy, but new clips can't be cut."
+                : "The full match was removed after processing, so new clips can't be cut."
           : view.tone === "progress"
             ? "This page refreshes on its own."
             : null;
 
   // Show the bar whenever the worker has reported a stage, even if a later restart flipped the status back to queued.
-  const working = view.tone === "progress" && (video?.status === "processing" || !!video?.stage);
+  const working = (view.tone === "progress" && (video?.status === "processing" || !!video?.stage)) || (video?.status === "done" && !!video.stage);
   const pct = working ? Math.max(0, Math.min(100, video?.progress ?? 0)) : null;
 
   return (
@@ -107,6 +114,25 @@ export function StatusPanel({ projectId, video, view }: { projectId: string; vid
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+          {video.status === "done" && video.hls_path && !video.source_deleted_at && !video.source_url ? (
+            <AlertDialog>
+              <AlertDialogTrigger render={<Button size="sm" variant="outline" disabled={pending} />}>
+                Delete original{sourceSize ? ` (${formatGigabytes(sourceSize)})` : ""}
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete the original file?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Frees{sourceSize ? ` ${formatGigabytes(sourceSize)} of` : ""} storage. The full match keeps streaming and all clips stay, but new clips can&apos;t be cut from this match anymore. It can&apos;t be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => run("Original deleted", () => deleteOriginal(video.id))}>Delete original</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          ) : null}
           <AlertDialog>
             <AlertDialogTrigger render={<Button size="sm" variant="destructive" disabled={pending} />}>Delete match</AlertDialogTrigger>
             <AlertDialogContent>

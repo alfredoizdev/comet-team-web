@@ -3,8 +3,9 @@
 import { randomUUID } from "node:crypto";
 import { assertCanManage, requireMember } from "@/lib/auth/members";
 import type { ClipWithPlayer, Project, Video } from "@/lib/db/types";
-import { deleteObjects, presignGet } from "@/lib/r2/client";
+import { deleteObjects, headObject, presignGet } from "@/lib/r2/client";
 import { customClipKey } from "@/lib/r2/keys";
+import { hlsMasterUrl } from "@/lib/videos/hls";
 import { validateClipRange } from "@/lib/videos/clip-range";
 import { parseYouTubeUrl } from "@/lib/videos/youtube";
 import * as repo from "@/lib/videos/repo";
@@ -17,7 +18,10 @@ export type MatchState = {
   /** Player names already saved for this team (for the picker). */
   players: string[];
   view: VideoView;
+  /** `source` is the HLS master playlist once the streaming copy exists, else the signed master file. */
   urls: { source: string | null; reel: string | null; clips: Record<string, string> };
+  /** Bytes of the uploaded master still in R2 (for the "Delete original" button), null when gone or YouTube. */
+  sourceSize: number | null;
   /** YouTube video id when the match was imported from a link (full match is streamed from YouTube). */
   youtubeId: string | null;
 };
@@ -31,17 +35,19 @@ export async function getMatchState(projectId: string): Promise<MatchState | nul
   const video = await repo.getVideoForProject(projectId);
   const view = describeVideo(video);
   const players = await repo.listPlayerNames(project.team);
-  if (!video) return { project, video, clips: [], players, view, urls: { source: null, reel: null, clips: {} }, youtubeId: null };
+  if (!video) return { project, video, clips: [], players, view, urls: { source: null, reel: null, clips: {} }, sourceSize: null, youtubeId: null };
   const youtubeId = video.source_url ? (parseYouTubeUrl(video.source_url)?.id ?? null) : null;
 
   const clips = await repo.listClips(video.id);
   const ready = clips.filter((c) => c.score > 0);
-  const [source, reel, clipUrls] = await Promise.all([
-    video.source_deleted_at || youtubeId ? null : presignGet(video.file_path),
+  const hasMaster = !video.source_deleted_at && !youtubeId;
+  const [source, reel, clipUrls, head] = await Promise.all([
+    video.hls_path ? hlsMasterUrl(video.id) : hasMaster ? presignGet(video.file_path) : null,
     video.highlight_reel_path ? presignGet(video.highlight_reel_path) : null,
     Promise.all(ready.map(async (c) => [c.id, await presignGet(c.file_path)] as const)),
+    hasMaster ? headObject(video.file_path) : null,
   ]);
-  return { project, video, clips, players, view, urls: { source, reel, clips: Object.fromEntries(clipUrls) }, youtubeId };
+  return { project, video, clips, players, view, urls: { source, reel, clips: Object.fromEntries(clipUrls) }, sourceSize: head?.size ?? null, youtubeId };
 }
 
 export async function createCustomClip(videoId: string, start: number, end: number): Promise<{ clipId: string }> {
