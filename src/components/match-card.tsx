@@ -24,7 +24,9 @@ export function MatchCard({ match, accentBg }: { match: PublicMatch; accentBg: s
       {match.clips.length > 0 ? (
         <div className="flex flex-col gap-2">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-[#6b6b76]">Moments</h3>
-          <MomentsGallery clips={match.clips} accentBg={accentBg} matchTitle={title} />
+          <div className="flex flex-col gap-3">
+            <MomentsGallery clips={match.clips} accentBg={accentBg} matchTitle={title} />
+          </div>
         </div>
       ) : null}
     </article>

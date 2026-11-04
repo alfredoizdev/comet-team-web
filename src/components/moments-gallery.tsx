@@ -13,9 +13,15 @@ function formatTime(seconds: number): string {
 }
 
 /** Grid of clip thumbnails; clicking one opens a large modal with a carousel over all clips. */
-export function MomentsGallery({ clips, accentBg, matchTitle }: { clips: PublicClip[]; accentBg: string; matchTitle: string }) {
+export function MomentsGallery({ clips: allClips, accentBg, matchTitle }: { clips: PublicClip[]; accentBg: string; matchTitle: string }) {
   const [index, setIndex] = useState<number | null>(null);
+  const [player, setPlayer] = useState<string | null>(null);
   const touchStartX = useRef<number | null>(null);
+
+  // Player filter pills: one per player named on at least one clip.
+  const players = Array.from(new Set(allClips.map((c) => c.player).filter((p): p is string => !!p))).sort((a, b) => a.localeCompare(b));
+  const clips = player ? allClips.filter((c) => c.player === player) : allClips;
+
   const open = index !== null;
   const current = index === null ? null : clips[index];
 
@@ -36,8 +42,37 @@ export function MomentsGallery({ clips, accentBg, matchTitle }: { clips: PublicC
     return () => window.removeEventListener("keydown", onKey);
   }, [open, go]);
 
+  function pickPlayer(next: string | null) {
+    setPlayer(next);
+    setIndex(null);
+  }
+
   return (
     <>
+      {players.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter moments by player">
+          <button
+            type="button"
+            onClick={() => pickPlayer(null)}
+            className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition ${player === null ? `${accentBg} text-white` : "bg-[#ececf0] text-[#0e0e12] hover:bg-neutral-200"}`}
+          >
+            All ({allClips.length})
+          </button>
+          {players.map((p) => {
+            const count = allClips.filter((c) => c.player === p).length;
+            return (
+              <button
+                key={p}
+                type="button"
+                onClick={() => pickPlayer(p)}
+                className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition ${player === p ? `${accentBg} text-white` : "bg-[#ececf0] text-[#0e0e12] hover:bg-neutral-200"}`}
+              >
+                {p} ({count})
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {clips.map((clip, i) => (
           <li key={clip.id}>
