@@ -9,10 +9,11 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { Clip, Team } from "@/lib/db/types";
+import type { ClipWithPlayer as Clip, Team } from "@/lib/db/types";
 import { teams } from "@/lib/teams";
 import type { VideoView } from "@/lib/videos/status";
-import { createCustomClip, deleteClip, type MatchState } from "./actions";
+import { assignPlayer, createCustomClip, deleteClip, type MatchState } from "./actions";
+import { NameCombobox } from "@/components/name-combobox";
 import { YouTubePlayer, type PlayerHandle } from "./youtube-player";
 
 function formatTimeFull(seconds: number): string {
@@ -245,6 +246,16 @@ export function Editor({ state, team }: { state: MatchState; team: Team }) {
     setTrimStart(range[0]);
     setTrimEnd(range[1]);
     seekTo(range[0]);
+  }
+
+  async function handlePlayer(clip: Clip, name: string) {
+    try {
+      await assignPlayer(clip.id, name || null);
+      toast.success(name ? `Player set: ${name}` : "Player cleared");
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save the player");
+    }
   }
 
   async function handleDeleteClip(clip: Clip) {
@@ -497,11 +508,25 @@ export function Editor({ state, team }: { state: MatchState; team: Team }) {
                       <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1 text-[10px] text-white">{formatTimeFull(clip.start_time)}</span>
                     </div>
                     <div className="flex min-w-0 flex-1 items-start justify-between px-2 py-1.5 md:px-0">
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <p className="truncate text-xs font-medium md:text-sm">{i === 0 ? "Best moment" : `Moment #${i + 1}`}</p>
                         <p className="text-[10px] text-neutral-500 md:text-xs">
                           {formatTimeFull(clip.start_time)} – {formatTimeFull(clip.end_time)}
                         </p>
+                        <div className="mt-1.5 hidden md:block" onClick={(e) => e.stopPropagation()}>
+                          <NameCombobox
+                            value={clip.player_name ?? ""}
+                            onChange={(name) => void handlePlayer(clip, name)}
+                            options={state.players}
+                            placeholder="Player (optional)"
+                            searchPlaceholder="Search players…"
+                            emptyLabel="No players saved yet. Type a name to add one."
+                            clearLabel="No player"
+                            size="sm"
+                            className="h-7 text-xs"
+                          />
+                        </div>
+                        {clip.player_name ? <p className="mt-1 text-[10px] font-medium text-neutral-700 md:hidden">{clip.player_name}</p> : null}
                       </div>
                       <button
                         type="button"

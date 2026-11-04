@@ -52,6 +52,9 @@ export function MomentsGallery({ clips, accentBg, matchTitle }: { clips: PublicC
                 <Play className="ml-0.5 size-5 fill-current" />
               </span>
               <span className="absolute bottom-2 right-2 rounded bg-black/70 px-1.5 py-0.5 text-xs font-medium text-white">{formatTime(clip.startTime)}</span>
+              {clip.player ? (
+                <span className={`${accentBg} absolute bottom-2 left-2 max-w-[70%] truncate rounded px-1.5 py-0.5 text-xs font-semibold text-white`}>{clip.player}</span>
+              ) : null}
             </button>
           </li>
         ))}
@@ -101,6 +104,7 @@ export function MomentsGallery({ clips, accentBg, matchTitle }: { clips: PublicC
               <div className="flex items-center justify-between px-4 py-3 text-sm text-white/80">
                 <span>
                   Moment {index! + 1} of {clips.length} · {formatTime(current.startTime)}
+                  {current.player ? <span className="font-semibold text-white"> · {current.player}</span> : null}
                 </span>
                 <span className="hidden sm:inline">Use ← → to move between moments</span>
               </div>

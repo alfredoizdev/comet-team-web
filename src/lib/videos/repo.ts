@@ -1,7 +1,7 @@
 // Service-role data access for the admin panel and public pages.
 // Kept thin and mockable: server actions call these instead of chaining
 // supabase-js queries inline.
-import type { Clip, Project, Team, Video } from "@/lib/db/types";
+import type { Clip, ClipWithPlayer, Player, Project, Team, Video } from "@/lib/db/types";
 import { createServiceClient } from "@/lib/supabase/server";
 
 export type MatchRow = { project: Project; video: Video | null; clipCount: number };
@@ -61,10 +61,36 @@ export async function updateVideo(videoId: string, patch: Partial<Video>): Promi
   if (error) fail("updateVideo", error);
 }
 
-export async function listClips(videoId: string): Promise<Clip[]> {
-  const { data, error } = await db().from("clips").select("*").eq("video_id", videoId).order("start_time");
+type ClipRow = Clip & { players: { name: string } | null };
+function withPlayer({ players, ...clip }: ClipRow): ClipWithPlayer {
+  return { ...clip, player_name: players?.name ?? null };
+}
+
+export async function listClips(videoId: string): Promise<ClipWithPlayer[]> {
+  const { data, error } = await db().from("clips").select("*, players(name)").eq("video_id", videoId).order("start_time");
   if (error) fail("listClips", error);
-  return (data as Clip[]) ?? [];
+  return ((data as ClipRow[]) ?? []).map(withPlayer);
+}
+
+export async function setClipPlayer(clipId: string, playerId: string | null): Promise<void> {
+  const { error } = await db().from("clips").update({ player_id: playerId }).eq("id", clipId);
+  if (error) fail("setClipPlayer", error);
+}
+
+export async function listPlayerNames(team: Team): Promise<string[]> {
+  const { data, error } = await db().from("players").select("name").eq("team", team).order("name");
+  if (error) fail("listPlayerNames", error);
+  return ((data as { name: string }[]) ?? []).map((p) => p.name);
+}
+
+/** Finds or creates a player of `team` by name (case-insensitive) and returns its id. */
+export async function rememberPlayer(team: Team, name: string): Promise<string> {
+  const { data, error } = await db().from("players").select("id").eq("team", team).ilike("name", name).limit(1);
+  if (error) fail("rememberPlayer", error);
+  if (data && data.length > 0) return (data[0] as { id: string }).id;
+  const { data: created, error: insertError } = await db().from("players").insert({ team, name }).select("id").single();
+  if (insertError || !created) fail("rememberPlayer", insertError);
+  return (created as Player).id;
 }
 
 export async function getClipWithVideo(clipId: string): Promise<{ clip: Clip; video: Video; project: Project } | null> {
@@ -111,22 +137,22 @@ export async function listMatchRows(team: Team | null): Promise<MatchRow[]> {
 }
 
 /** Published, finished videos of a team with their clips, newest match first. */
-export async function listPublishedRows(team: Team): Promise<{ project: Project; video: Video; clips: Clip[] }[]> {
+export async function listPublishedRows(team: Team): Promise<{ project: Project; video: Video; clips: ClipWithPlayer[] }[]> {
   const { data, error } = await db()
     .from("projects")
-    .select("*, videos!inner(*, clips(*))")
+    .select("*, videos!inner(*, clips(*, players(name)))")
     .eq("team", team)
     .eq("videos.is_published", true)
     .eq("videos.status", "done")
     .order("match_date", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false });
   if (error) fail("listPublishedRows", error);
-  type Row = Project & { videos: (Video & { clips: Clip[] })[] };
+  type Row = Project & { videos: (Video & { clips: ClipRow[] })[] };
   return ((data as Row[]) ?? []).flatMap(({ videos, ...project }) => {
     const v = videos[0];
     if (!v) return [];
     const { clips, ...video } = v;
-    return [{ project: project as Project, video: video as Video, clips }];
+    return [{ project: project as Project, video: video as Video, clips: clips.map(withPlayer) }];
   });
 }
 

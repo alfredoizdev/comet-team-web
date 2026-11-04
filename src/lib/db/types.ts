@@ -49,8 +49,15 @@ export type Clip = {
   end_time: number;
   score: number;
   file_path: string;
+  /** Player named on this clip (optional). */
+  player_id: string | null;
   created_at: string;
 };
+
+export type Player = { id: string; team: Team; name: string };
+
+/** Clip with the player's name resolved (what the panel and public pages use). */
+export type ClipWithPlayer = Clip & { player_name: string | null };
 
 export type ClubMember = {
   id: string;

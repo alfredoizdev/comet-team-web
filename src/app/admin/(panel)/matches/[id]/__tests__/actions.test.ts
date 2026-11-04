@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Clip, Project, Video } from "@/lib/db/types";
+import type { ClipWithPlayer, Project, Video } from "@/lib/db/types";
 
 vi.mock("@/lib/auth/members", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/auth/members")>();
@@ -23,7 +23,7 @@ const video: Video = {
   id: "v1", project_id: "p1", file_path: "u1/v1/video.mp4", status: "done", error_message: null, duration: 100,
   highlight_reel_path: "v1/highlight_reel.mp4", is_published: true, published_at: "x", source_deleted_at: null, source_url: null, stage: null, progress: null, created_at: "",
 };
-const clip = (id: string, score: number): Clip => ({ id, video_id: "v1", start_time: 1, end_time: 10, score, file_path: `v1/clip_${id}.mp4`, created_at: "" });
+const clip = (id: string, score: number): ClipWithPlayer => ({ id, video_id: "v1", start_time: 1, end_time: 10, score, file_path: `v1/clip_${id}.mp4`, player_id: null, player_name: null, created_at: "" });
 
 beforeEach(() => {
   vi.mocked(requireMember).mockResolvedValue({ userId: "u1", email: "a@x.com", role: "admin", team: null });

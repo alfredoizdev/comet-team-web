@@ -2,7 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { assertCanManage, requireMember } from "@/lib/auth/members";
-import type { Clip, Project, Video } from "@/lib/db/types";
+import type { ClipWithPlayer, Project, Video } from "@/lib/db/types";
 import { deleteObjects, presignGet } from "@/lib/r2/client";
 import { customClipKey } from "@/lib/r2/keys";
 import { validateClipRange } from "@/lib/videos/clip-range";
@@ -13,7 +13,9 @@ import { describeVideo, type VideoView } from "@/lib/videos/status";
 export type MatchState = {
   project: Project;
   video: Video | null;
-  clips: Clip[];
+  clips: ClipWithPlayer[];
+  /** Player names already saved for this team (for the picker). */
+  players: string[];
   view: VideoView;
   urls: { source: string | null; reel: string | null; clips: Record<string, string> };
   /** YouTube video id when the match was imported from a link (full match is streamed from YouTube). */
@@ -28,7 +30,8 @@ export async function getMatchState(projectId: string): Promise<MatchState | nul
 
   const video = await repo.getVideoForProject(projectId);
   const view = describeVideo(video);
-  if (!video) return { project, video, clips: [], view, urls: { source: null, reel: null, clips: {} }, youtubeId: null };
+  const players = await repo.listPlayerNames(project.team);
+  if (!video) return { project, video, clips: [], players, view, urls: { source: null, reel: null, clips: {} }, youtubeId: null };
   const youtubeId = video.source_url ? (parseYouTubeUrl(video.source_url)?.id ?? null) : null;
 
   const clips = await repo.listClips(video.id);
@@ -38,7 +41,7 @@ export async function getMatchState(projectId: string): Promise<MatchState | nul
     video.highlight_reel_path ? presignGet(video.highlight_reel_path) : null,
     Promise.all(ready.map(async (c) => [c.id, await presignGet(c.file_path)] as const)),
   ]);
-  return { project, video, clips, view, urls: { source, reel, clips: Object.fromEntries(clipUrls) }, youtubeId };
+  return { project, video, clips, players, view, urls: { source, reel, clips: Object.fromEntries(clipUrls) }, youtubeId };
 }
 
 export async function createCustomClip(videoId: string, start: number, end: number): Promise<{ clipId: string }> {
@@ -86,4 +89,15 @@ export async function deleteClip(clipId: string): Promise<void> {
     status: "error",
     error_message: "no_clips",
   });
+}
+
+/** Names (or clears) the player on a clip; new names are remembered for the team. */
+export async function assignPlayer(clipId: string, name: string | null): Promise<void> {
+  const m = await requireMember();
+  const found = await repo.getClipWithVideo(clipId);
+  if (!found) throw new Error("Clip not found");
+  assertCanManage(m, found.project.team);
+  const trimmed = name?.trim() ?? "";
+  const playerId = trimmed ? await repo.rememberPlayer(found.project.team, trimmed) : null;
+  await repo.setClipPlayer(clipId, playerId);
 }

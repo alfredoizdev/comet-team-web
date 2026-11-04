@@ -1,4 +1,4 @@
-import type { Clip, Project, Team, Video } from "@/lib/db/types";
+import type { ClipWithPlayer, Project, Team, Video } from "@/lib/db/types";
 import { presignGet } from "@/lib/r2/client";
 import { listPublishedRows } from "@/lib/videos/repo";
 
@@ -14,7 +14,7 @@ export function matchDateLabel(m: Pick<PublicMatch, "matchDate">): string | null
   return m.matchDate ? longDate.format(new Date(`${m.matchDate}T12:00:00`)) : null;
 }
 
-export type PublicClip = { id: string; startTime: number; url: string };
+export type PublicClip = { id: string; startTime: number; url: string; player: string | null };
 export type PublicMatch = {
   id: string;
   title: string;
@@ -28,7 +28,7 @@ export type PublicMatch = {
 };
 
 /** Pure selection: published + done videos, ready clips in time order, no signing. */
-export function selectPublishable(rows: { project: Project; video: Video; clips: Clip[] }[]): PublicMatch[] {
+export function selectPublishable(rows: { project: Project; video: Video; clips: ClipWithPlayer[] }[]): PublicMatch[] {
   return rows
     .filter(({ video }) => video.is_published && video.status === "done")
     .map(({ project, video, clips }) => ({
@@ -42,7 +42,7 @@ export function selectPublishable(rows: { project: Project; video: Video; clips:
       clips: clips
         .filter((c) => c.score > 0)
         .sort((a, b) => a.start_time - b.start_time)
-        .map((c) => ({ id: c.id, startTime: c.start_time, url: c.file_path })),
+        .map((c) => ({ id: c.id, startTime: c.start_time, url: c.file_path, player: c.player_name })),
     }));
 }
 
