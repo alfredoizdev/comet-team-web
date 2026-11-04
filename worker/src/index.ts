@@ -116,7 +116,6 @@ async function poll() {
       }
       await processCustomClips();
       await regenerateStaleReels();
-      await generatePendingHls();
     } catch (err) {
       console.error("Poll error:", message(err));
     }
@@ -124,4 +123,17 @@ async function poll() {
   }
 }
 
+/** Second lane: streaming copies. Independent of the clips lane, one encode at a time. */
+async function pollHls() {
+  while (true) {
+    try {
+      await generatePendingHls();
+    } catch (err) {
+      console.error("HLS poll error:", message(err));
+    }
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
+  }
+}
+
 poll();
+pollHls();

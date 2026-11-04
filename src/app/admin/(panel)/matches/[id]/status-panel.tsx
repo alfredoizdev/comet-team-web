@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useTransition } from "react";
 import { toast } from "sonner";
@@ -18,7 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import type { VideoView } from "@/lib/videos/status";
-import type { Video } from "@/lib/db/types";
+import type { Team, Video } from "@/lib/db/types";
 import { formatGigabytes } from "@/lib/videos/format";
 import { deleteMatch, deleteOriginal, reprocessMatch, setPublished } from "../../actions";
 
@@ -29,7 +30,7 @@ const toneClass: Record<VideoView["tone"], string> = {
   error: "bg-red-100 text-red-800",
 };
 
-export function StatusPanel({ projectId, video, view, sourceSize }: { projectId: string; video: Video | null; view: VideoView; sourceSize?: number | null }) {
+export function StatusPanel({ projectId, team, video, view, sourceSize }: { projectId: string; team: Team; video: Video | null; view: VideoView; sourceSize?: number | null }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
@@ -73,6 +74,7 @@ export function StatusPanel({ projectId, video, view, sourceSize }: { projectId:
             : null;
 
   // Show the bar whenever the worker has reported a stage, even if a later restart flipped the status back to queued.
+  // (Declared before the JSX that uses it; also gates the "New match" shortcut: the queue takes more matches while this one runs.)
   const working = (view.tone === "progress" && (video?.status === "processing" || !!video?.stage)) || (video?.status === "done" && !!video.stage);
   const pct = working ? Math.max(0, Math.min(100, video?.progress ?? 0)) : null;
 
@@ -86,6 +88,11 @@ export function StatusPanel({ projectId, video, view, sourceSize }: { projectId:
       </div>
       {video ? (
         <div className="flex flex-wrap gap-2">
+          {working ? (
+            <Button size="sm" render={<Link href={`/admin/matches/new?team=${team}`} />} nativeButton={false} className="bg-boys text-white hover:bg-boys-deep">
+              New match
+            </Button>
+          ) : null}
           <Button
             size="sm"
             variant={video.is_published ? "outline" : "default"}
@@ -159,7 +166,10 @@ export function StatusPanel({ projectId, video, view, sourceSize }: { projectId:
         </div>
       ) : null}
       {video?.status === "uploaded" && !video.stage ? (
-        <p className="text-sm text-neutral-600">Waiting for the worker to pick this match up. If it stays here, make sure the worker is running on the Mac (`pnpm worker`).</p>
+        <p className="text-sm text-neutral-600">
+          Waiting for the worker to pick this match up. If it stays here, make sure the worker is running on the Mac (`pnpm worker`). You can{" "}
+          <Link href={`/admin/matches/new?team=${team}`} className="font-medium underline">queue another match</Link> meanwhile.
+        </p>
       ) : null}
     </div>
   );

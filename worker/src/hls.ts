@@ -113,6 +113,11 @@ export async function generateHls(video: { id: string; file_path: string; durati
     await report(10);
     await runFfmpeg(hlsArgs(inputPath, outDir, { encoder: videoEncoder() }), video.duration ?? 0, (pct) => void report(10 + pct * 0.85));
 
+    const { data: still } = await supabase.from("videos").select("id").eq("id", video.id).maybeSingle();
+    if (!still) {
+      console.log(`[${tag}] Match was deleted while encoding; discarding`);
+      return;
+    }
     console.log(`[${tag}] Uploading...`);
     await report(95);
     const keys = hlsKeys(video.id);
