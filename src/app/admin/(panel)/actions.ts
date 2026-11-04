@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { assertCanManage, requireMember } from "@/lib/auth/members";
 import type { Team } from "@/lib/db/types";
-import { reelKey } from "@/lib/r2/keys";
 import { deleteObjects, presignGet } from "@/lib/r2/client";
 import * as repo from "@/lib/videos/repo";
 import { describeVideo } from "@/lib/videos/status";
@@ -74,7 +73,7 @@ export async function reprocessMatch(videoId: string): Promise<void> {
   assertCanManage(m, found.project.team);
   if (found.video.source_deleted_at) throw new Error("Source video was removed");
   const clips = await repo.listClips(videoId);
-  await deleteObjects([...clips.map((c) => c.file_path), reelKey(videoId)]);
+  await deleteObjects([...clips.map((c) => c.file_path), ...(found.video.highlight_reel_path ? [found.video.highlight_reel_path] : [])]);
   await repo.deleteClipsForVideo(videoId);
   await repo.updateVideo(videoId, {
     status: "uploaded",
@@ -97,7 +96,7 @@ export async function deleteMatch(projectId: string): Promise<void> {
   const video = await repo.getVideoForProject(projectId);
   if (video) {
     const clips = await repo.listClips(video.id);
-    const keys = [...clips.map((c) => c.file_path), reelKey(video.id)];
+    const keys = [...clips.map((c) => c.file_path), ...(video.highlight_reel_path ? [video.highlight_reel_path] : [])];
     if (!video.source_deleted_at) keys.push(video.file_path);
     await deleteObjects(keys);
   }

@@ -151,11 +151,13 @@ export async function regenerateHighlightReel(videoId: string) {
     console.log(`[reel:${videoId}] Concatenating ${clips.length} clips...`);
     await concatClips(clipPaths, join(tmpDir, "concat.txt"), reelPath);
 
+    const { data: current } = await supabase.from("videos").select("highlight_reel_path").eq("id", videoId).single();
     const key = reelKey(videoId);
-    await deleteObjects([key]);
     await uploadFile(key, reelPath, "video/mp4");
-
     await supabase.from("videos").update({ highlight_reel_path: key, reel_stale: false, stage: null, progress: 100 }).eq("id", videoId);
+    // Only now drop the previous reel: viewers keep a working URL until the new one is in place.
+    const previous = current?.highlight_reel_path;
+    if (previous && previous !== key) await deleteObjects([previous]);
     console.log(`[reel:${videoId}] Highlight reel regenerated with ${clips.length} clips!`);
   } finally {
     if (existsSync(tmpDir)) rmSync(tmpDir, { recursive: true, force: true });

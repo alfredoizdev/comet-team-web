@@ -11,8 +11,9 @@ describe("R2 object keys (PeakClip layout)", () => {
   it("builds custom clip keys by clip id", () => {
     expect(customClipKey("v1", "c1")).toBe("v1/custom_c1.mp4");
   });
-  it("builds the reel key", () => {
-    expect(reelKey("v1")).toBe("v1/highlight_reel.mp4");
+  it("builds a versioned reel key so a rebuilt reel never shares a URL with the old one", () => {
+    expect(reelKey("v1", 42)).toBe("v1/highlight_reel_42.mp4");
+    expect(reelKey("v1")).not.toBe(reelKey("v1", 1));
   });
 });
 

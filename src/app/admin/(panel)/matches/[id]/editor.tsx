@@ -71,7 +71,8 @@ export function Editor({ state, team }: { state: MatchState; team: Team }) {
   const sources: Source[] = [];
   if (state.youtubeId) sources.push({ label: "Full match", kind: "youtube", youtubeId: state.youtubeId, duration: video.duration ?? 0 });
   else if (state.urls.source) sources.push({ label: "Full match", kind: "video", url: state.urls.source, duration: video.duration ?? 0 });
-  if (state.urls.reel) sources.push({ label: "Highlight reel", kind: "video", url: state.urls.reel, duration: 0 });
+  const reelLength = clips.filter((c) => c.score > 0).reduce((sum, c) => sum + (c.end_time - c.start_time), 0);
+  if (state.urls.reel) sources.push({ label: "Highlight reel", kind: "video", url: state.urls.reel, duration: reelLength });
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const playerRef = useRef<PlayerHandle | null>(null);

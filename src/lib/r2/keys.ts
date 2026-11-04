@@ -15,9 +15,13 @@ export function customClipKey(videoId: string, clipId: string): string {
   return `${videoId}/custom_${clipId}.mp4`;
 }
 
-/** Highlight reel for a video: `{videoId}/highlight_reel.mp4`. */
-export function reelKey(videoId: string): string {
-  return `${videoId}/highlight_reel.mp4`;
+/**
+ * Highlight reel for a video. Each rebuild gets a new key
+ * (`{videoId}/highlight_reel_{version}.mp4`) so browsers never keep playing a
+ * stale cached reel behind an identical URL; the previous object is deleted.
+ */
+export function reelKey(videoId: string, version: number | string = Date.now()): string {
+  return `${videoId}/highlight_reel_${version}.mp4`;
 }
 
 /** Lower-cased extension of `name` if it is an allowed video type, else null. */
