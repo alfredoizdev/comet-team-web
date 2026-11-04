@@ -10,7 +10,9 @@ import { analyzeAudio, findTopPeaks, hasUsefulAudio } from "./audio";
 import { autoClipKey, deleteObjects, downloadToFile, reelKey, uploadFile } from "./storage";
 
 const execAsync = promisify(execFile);
-const exec = (cmd: string, args: string[]) => execAsync(cmd, args, { maxBuffer: 50 * 1024 * 1024, timeout: 600_000 });
+/** ffmpeg/ffprobe never read stdin and always overwrite: a leftover file must never make them wait for "y/N". */
+const exec = (cmd: string, args: string[]) =>
+  execAsync(cmd, cmd === "ffmpeg" ? ["-nostdin", "-y", ...args] : args, { maxBuffer: 50 * 1024 * 1024, timeout: 1_800_000 });
 
 const TMP_ROOT = join("/tmp", "peakclip");
 const CLIP_BEFORE_SECONDS = 5;
@@ -97,6 +99,7 @@ export async function processCustomClip(
 ) {
   const report = progressReporter(clip.video_id);
   const tmpDir = join(TMP_ROOT, `custom_${clip.id}`);
+  rmSync(tmpDir, { recursive: true, force: true });
   mkdirSync(tmpDir, { recursive: true });
   try {
     const inputPath = join(tmpDir, "input.mp4");
@@ -121,6 +124,7 @@ export async function processCustomClip(
 export async function regenerateHighlightReel(videoId: string) {
   const supabase = getSupabase();
   const tmpDir = join(TMP_ROOT, `reel_${videoId}`);
+  rmSync(tmpDir, { recursive: true, force: true });
   mkdirSync(tmpDir, { recursive: true });
   try {
     const { data: clips } = await supabase
@@ -162,6 +166,8 @@ export async function processVideo(videoId: string, source: VideoSource) {
   const supabase = getSupabase();
   const report = progressReporter(videoId);
   const tmpDir = join(TMP_ROOT, videoId);
+  // A job killed mid-way (worker restart) leaves files behind: start clean.
+  rmSync(tmpDir, { recursive: true, force: true });
   mkdirSync(tmpDir, { recursive: true });
 
   try {
