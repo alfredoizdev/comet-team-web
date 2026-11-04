@@ -85,9 +85,25 @@ export function StatusPanel({ projectId, video, view }: { projectId: string; vid
           >
             {video.is_published ? "Unpublish" : "Publish"}
           </Button>
-          <Button size="sm" variant="outline" disabled={pending || !view.canReprocess} onClick={() => run("Reprocessing", () => reprocessMatch(video.id))}>
-            Reprocess
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger render={<Button size="sm" variant="outline" disabled={pending || !view.canReprocess} />}>
+              {video.status === "processing" ? "Restart processing" : "Reprocess"}
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{video.status === "processing" ? "Restart processing?" : "Reprocess this match?"}</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {video.status === "processing"
+                    ? "Only do this if the worker got stuck (for example after a restart). Partial clips are discarded and the match is queued again."
+                    : "All clips and the highlight reel are discarded and the match is queued again."}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={() => run("Queued again", () => reprocessMatch(video.id))}>Continue</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           <AlertDialog>
             <AlertDialogTrigger render={<Button size="sm" variant="destructive" disabled={pending} />}>Delete match</AlertDialogTrigger>
             <AlertDialogContent>

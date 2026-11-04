@@ -11,8 +11,8 @@ describe("describeVideo", () => {
   it("uploaded is queued", () => {
     expect(describeVideo({ ...base, status: "uploaded" })).toMatchObject({ label: "Queued", tone: "progress", canPublish: false });
   });
-  it("processing", () => {
-    expect(describeVideo({ ...base, status: "processing" })).toMatchObject({ label: "Processing", tone: "progress", canPublish: false });
+  it("processing can be restarted in case the worker died mid-job", () => {
+    expect(describeVideo({ ...base, status: "processing" })).toMatchObject({ label: "Processing", tone: "progress", canPublish: false, canReprocess: true });
   });
   it("done with reel is ready and publishable, cuttable, reprocessable", () => {
     const v = describeVideo({ ...base, status: "done", highlight_reel_path: "v1/highlight_reel.mp4" });

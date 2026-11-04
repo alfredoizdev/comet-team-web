@@ -28,7 +28,8 @@ export function describeVideo(video: VideoLike | null): VideoView {
     case "uploaded":
       return { label: "Queued", tone: "progress", canPublish: false, canCut: false, canReprocess: false };
     case "processing":
-      return { label: "Processing", tone: "progress", canPublish: false, canCut: false, canReprocess: false };
+      // Reprocess stays available so a job killed mid-way (worker restart) can be restarted.
+      return { label: "Processing", tone: "progress", canPublish: false, canCut: false, canReprocess: hasSource };
     case "done":
       if (video.highlight_reel_path) {
         return { label: "Ready", tone: "ok", canPublish: true, canCut: hasSource, canReprocess: hasSource };
