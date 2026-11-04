@@ -63,7 +63,8 @@ export function StatusPanel({ projectId, video, view }: { projectId: string; vid
             ? "This page refreshes on its own."
             : null;
 
-  const working = view.tone === "progress" && video?.status === "processing";
+  // Show the bar whenever the worker has reported a stage, even if a later restart flipped the status back to queued.
+  const working = view.tone === "progress" && (video?.status === "processing" || !!video?.stage);
   const pct = working ? Math.max(0, Math.min(100, video?.progress ?? 0)) : null;
 
   return (
@@ -129,7 +130,7 @@ export function StatusPanel({ projectId, video, view }: { projectId: string; vid
           </div>
         </div>
       ) : null}
-      {video?.status === "uploaded" ? (
+      {video?.status === "uploaded" && !video.stage ? (
         <p className="text-sm text-neutral-600">Waiting for the worker to pick this match up. If it stays here, make sure the worker is running on the Mac (`pnpm worker`).</p>
       ) : null}
     </div>
