@@ -362,7 +362,9 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
     }
   }
 
-  const clipName = (clip: Clip, i: number) => (clip.score === 0 ? "New clip" : clip.score < 0 ? "Failed clip" : i === 0 ? "Best moment" : `Moment #${i + 1}`);
+  const isCustom = (clip: Clip) => clip.file_path.includes("/custom_");
+  const clipName = (clip: Clip, i: number) =>
+    clip.score === 0 ? "New clip" : clip.score < 0 ? "Failed clip" : isCustom(clip) ? `Custom clip #${i + 1}` : i === 0 ? "Best moment" : `Moment #${i + 1}`;
 
   const dark = maximized;
 
@@ -437,7 +439,10 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
               {thumb}
               <div className="flex min-w-0 flex-col gap-1 sm:gap-1.5">
                 <div className="flex items-center justify-between gap-1.5">
-                  <span className="truncate text-sm font-semibold text-[#0e0e12]">{clipName(clip, i)}</span>
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="truncate text-sm font-semibold text-[#0e0e12]">{clipName(clip, i)}</span>
+                    {isCustom(clip) && clip.score > 0 ? <span className="shrink-0 rounded bg-[#e6ebf5] px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-boys">Manual</span> : null}
+                  </span>
                   {editable ? (
                     <button
                       type="button"
@@ -497,8 +502,15 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
 
   const trimDuration = trimEnd - trimStart;
   const pct = (t: number) => (videoDuration ? (t / videoDuration) * 100 : 0);
-  const cutDisabled = creating || trimDuration < 1 || !view.canCut || !isFullMatch;
-  const cutTitle = !view.canCut ? "The original file was deleted, so new clips can't be cut." : !isFullMatch ? "Switch to the full match to cut a new clip." : undefined;
+  const duplicateOf = isFullMatch ? clips.find((c) => Math.abs(c.start_time - trimStart) < 0.5 && Math.abs(c.end_time - trimEnd) < 0.5) : undefined;
+  const cutDisabled = creating || trimDuration < 1 || !view.canCut || !isFullMatch || !!duplicateOf;
+  const cutTitle = !view.canCut
+    ? "The original file was deleted, so new clips can't be cut."
+    : !isFullMatch
+      ? "Switch to the full match to cut a new clip."
+      : duplicateOf
+        ? `This range is already "${clipName(duplicateOf, clips.indexOf(duplicateOf))}". Move the selection to cut a new moment.`
+        : undefined;
   const selectionLabel = `${formatTimeFull(trimStart)} – ${formatTimeFull(trimEnd)} (${trimDuration.toFixed(0)}s)`;
 
   // Timeline model: labels every 5 min (1 min on short sources), minute ticks, markers in lanes.
