@@ -120,6 +120,16 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
   /** Last clip the reel playhead was followed into (so the selection moves once per clip, not every tick). */
   const [followedId, setFollowedId] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  /** Target of a seek in flight: the player keeps reporting the old time for a moment, which must not move the highlight. */
+  const seekRef = useRef<{ time: number; at: number } | null>(null);
+  function reportTime(t: number) {
+    const seek = seekRef.current;
+    if (seek) {
+      if (Math.abs(t - seek.time) > 1.5 && Date.now() - seek.at < 2000) return;
+      seekRef.current = null;
+    }
+    setCurrentTime(t);
+  }
   // "Mark while watching": match-time marks, saved per video on the server (shared by every
   // coach and device) until clips are cut from them. Shown optimistically, re-synced on refresh.
   const [marks, setMarks] = useState<number[]>(state.marks);
@@ -232,7 +242,7 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
       duration: () => el.duration || 0,
     };
     const handle = playerRef.current;
-    const onTimeUpdate = () => setCurrentTime(el.currentTime);
+    const onTimeUpdate = () => reportTime(el.currentTime);
     const onCanPlay = () => setVideoReady(true);
     const onMeta = () => {
       setMediaDuration(el.duration || 0);
@@ -302,6 +312,7 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
     const p = playerRef.current;
     if (!p) return;
     const clamped = Math.max(0, Math.min(time, videoDuration));
+    seekRef.current = { time: clamped, at: Date.now() };
     p.seek(clamped);
     setCurrentTime(clamped);
   }
@@ -773,7 +784,7 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
             if (st === "playing") setPlaying(true);
             if (st === "paused" || st === "ended") setPlaying(false);
           }}
-          onTime={setCurrentTime}
+          onTime={reportTime}
           onClick={togglePlay}
         />
       ) : (
