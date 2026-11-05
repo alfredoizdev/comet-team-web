@@ -217,6 +217,28 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
     setCurrentTime(clamped);
   }
 
+  // Keyboard: Space plays/pauses, ← / → move 5 s. Ignored while typing in a field or
+  // when a button/picker has focus (its own key handling wins).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.closest("input, textarea, select, button, [contenteditable], [role=dialog], [role=listbox], [role=combobox]"))) return;
+      if (e.key === " " || e.code === "Space") {
+        e.preventDefault();
+        togglePlay();
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        seekTo(currentTime - 5);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        seekTo(currentTime + 5);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
   function timeAtClientX(clientX: number): number {
     const el = timelineRef.current;
     if (!el) return 0;
