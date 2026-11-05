@@ -10,7 +10,9 @@ export function isHlsUrl(src: string): boolean {
  * Feeds `src` to the video element: an HLS playlist natively where the browser
  * supports it (Safari, iOS) or through hls.js elsewhere; any other URL directly.
  */
-export function useHls(ref: RefObject<HTMLVideoElement | null>, src: string): void {
+export function useHls(ref: RefObject<HTMLVideoElement | null>, src: string, remountKey: unknown = null): void {
+  // `remountKey`: pass a value that changes whenever the <video> element is re-created
+  // (e.g. a layout toggle), so the source is attached to the new element.
   useEffect(() => {
     const el = ref.current;
     if (!el || !src) return;
@@ -39,7 +41,7 @@ export function useHls(ref: RefObject<HTMLVideoElement | null>, src: string): vo
       hls?.destroy();
       detach();
     };
-  }, [ref, src]);
+  }, [ref, src, remountKey]);
 }
 
 type Props = Omit<React.ComponentProps<"video">, "src"> & { src: string };

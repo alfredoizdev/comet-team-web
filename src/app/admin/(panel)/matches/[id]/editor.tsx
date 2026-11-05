@@ -115,6 +115,16 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
   const [maximized, setMaximized] = useState(false);
   /** Clip picked from the list or the timeline; highlighting follows this, not the playhead. */
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Entering/leaving fullscreen re-creates the player; remember where we were to resume there.
+  const [resume, setResume] = useState<{ time: number; playing: boolean } | null>(null);
+  function setMax(next: boolean) {
+    setResume({ time: playerRef.current?.currentTime() ?? currentTime, playing });
+    playerRef.current?.pause();
+    playerRef.current = null;
+    setVideoReady(false);
+    setPlaying(false);
+    setMaximized(next);
+  }
   // The "Buffering…" overlay only shows when a stall lasts; a quick seek must not flash it.
   const bufferTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stopBuffering = () => {
@@ -134,7 +144,7 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
   useEffect(() => {
     if (!maximized) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMaximized(false);
+      if (e.key === "Escape") setMax(false);
     };
     window.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
@@ -143,12 +153,14 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [maximized]);
 
   const activeSource = sources[sourceIndex] ?? sources[0];
   const videoUrl = activeSource?.kind === "video" ? activeSource.url : "";
   // The full match streams as HLS (hls.js where needed); clips and reels are plain files.
-  useHls(videoRef, videoUrl);
+  // The element is re-created when fullscreen toggles, so the source must be re-attached then.
+  useHls(videoRef, videoUrl, maximized);
   const isYouTube = activeSource?.kind === "youtube";
   const videoDuration = activeSource?.duration || mediaDuration || 0;
   const isFullMatch = activeSource?.label === "Full match";
@@ -174,9 +186,21 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
       currentTime: () => el.currentTime,
       duration: () => el.duration || 0,
     };
+    const handle = playerRef.current;
     const onTimeUpdate = () => setCurrentTime(el.currentTime);
     const onCanPlay = () => setVideoReady(true);
-    const onMeta = () => setMediaDuration(el.duration || 0);
+    const onMeta = () => {
+      setMediaDuration(el.duration || 0);
+      if (resume) {
+        setResume(null);
+        handle.seek(resume.time);
+        setCurrentTime(resume.time);
+        if (resume.playing) {
+          handle.play();
+          setPlaying(true);
+        }
+      }
+    };
     const onWaiting = () => startBuffering();
     const onPlaying = () => stopBuffering();
     const onSeeked = () => stopBuffering();
@@ -198,13 +222,14 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
       el.removeEventListener("seeked", onSeeked);
       stopBuffering();
     };
-  }, [videoUrl]);
+  }, [videoUrl, maximized, resume]);
 
   function switchSource(i: number) {
     if (i === sourceIndex) return;
     playerRef.current = null;
     setSourceIndex(i);
     setSelectedId(null);
+    setResume(null);
     setTrimStart(0);
     setTrimEnd(Math.min(15, sources[i]?.duration || 15));
     setCurrentTime(0);
@@ -570,6 +595,15 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
       {isYouTube && activeSource.kind === "youtube" ? (
         <YouTubePlayer
           videoId={activeSource.youtubeId}
+          startAt={resume?.time}
+          autoplay={resume?.playing}
+          onStarted={() => {
+            if (resume) {
+              setCurrentTime(resume.time);
+              setPlaying(resume.playing);
+              setResume(null);
+            }
+          }}
           onReady={(handle, duration) => {
             playerRef.current = handle;
             setMediaDuration(duration);
@@ -848,7 +882,7 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
             <span className="hidden whitespace-nowrap text-[13px] font-medium text-[#a9b3cc] sm:inline">Clip editor</span>
             {sources.length > 1 ? sourcePills : null}
             {selectionChip}
-            <button type="button" onClick={() => setMaximized(false)} className="ml-auto inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-[#3a4560] px-3.5 text-[13px] font-semibold text-white hover:bg-white/10">
+            <button type="button" onClick={() => setMax(false)} className="ml-auto inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-[#3a4560] px-3.5 text-[13px] font-semibold text-white hover:bg-white/10">
               Exit fullscreen <span className="font-mono text-xs text-[#a9b3cc]">Esc</span>
             </button>
           </div>
@@ -867,7 +901,7 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
       <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-[#e3e6ec] bg-white p-3 md:gap-3.5 md:rounded-none md:border-0 md:p-0">
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="font-display text-[26px] leading-none tracking-[0.02em] text-[#0e0e12] sm:text-[28px]">Clip editor</h2>
-          <button type="button" onClick={() => setMaximized(true)} className="ml-auto inline-flex h-11 items-center rounded-lg border border-[#d5d9e2] bg-white px-3 text-[13px] font-semibold text-[#0e0e12] hover:bg-[#f4f5f8] sm:ml-0 sm:h-8 sm:px-2.5">
+          <button type="button" onClick={() => setMax(true)} className="ml-auto inline-flex h-11 items-center rounded-lg border border-[#d5d9e2] bg-white px-3 text-[13px] font-semibold text-[#0e0e12] hover:bg-[#f4f5f8] sm:ml-0 sm:h-8 sm:px-2.5">
             Fullscreen
           </button>
           {sources.length > 1 ? <div className="w-full sm:w-auto">{sourcePills}</div> : null}

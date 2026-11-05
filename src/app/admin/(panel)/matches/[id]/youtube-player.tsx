@@ -61,17 +61,26 @@ export function YouTubePlayer({
   onState,
   onTime,
   onClick,
+  startAt,
+  autoplay,
+  onStarted,
 }: {
   videoId: string;
   onReady: (handle: PlayerHandle, duration: number) => void;
   onState: (state: "playing" | "paused" | "buffering" | "ended") => void;
   onTime: (seconds: number) => void;
   onClick?: () => void;
+  /** Position to show once the player is warmed up (default 0), e.g. to resume after a re-mount. */
+  startAt?: number;
+  /** Keep playing after the warm-up instead of pausing on the first frame. */
+  autoplay?: boolean;
+  /** Fired once the warm-up is done and `startAt`/`autoplay` have been applied. */
+  onStarted?: () => void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const callbacks = useRef({ onReady, onState, onTime });
+  const callbacks = useRef({ onReady, onState, onTime, onStarted, startAt, autoplay });
   useEffect(() => {
-    callbacks.current = { onReady, onState, onTime };
+    callbacks.current = { onReady, onState, onTime, onStarted, startAt, autoplay };
   });
 
   useEffect(() => {
@@ -117,10 +126,16 @@ export function YouTubePlayer({
             if (warmingUp) {
               if (e.data === S.PLAYING) {
                 warmingUp = false;
-                player!.pauseVideo();
-                player!.seekTo(0, true);
+                const { startAt: at, autoplay: keepPlaying, onStarted: started } = callbacks.current;
+                player!.seekTo(at ?? 0, true);
                 player!.unMute();
-                callbacks.current.onState("paused");
+                if (keepPlaying) {
+                  callbacks.current.onState("playing");
+                } else {
+                  player!.pauseVideo();
+                  callbacks.current.onState("paused");
+                }
+                started?.();
               }
               return;
             }
