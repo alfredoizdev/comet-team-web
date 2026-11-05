@@ -68,9 +68,9 @@ function TimeInput({ value, onChange, className, ariaLabel }: { value: number; o
   );
 }
 
-/** Assigns clip markers to up to three rows so their numbers never overlap (design 4k). */
+/** Assigns clip markers to up to four rows so their times never overlap (design 4k). */
 function laneFor(positions: number[], thresholdPct: number): { lanes: number[]; count: number } {
-  const last = [-999, -999, -999];
+  const last = [-999, -999, -999, -999];
   let max = 0;
   const lanes = positions.map((p) => {
     let lane = last.findIndex((l) => p - l >= thresholdPct);
@@ -459,7 +459,7 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
     setDeletingIds((prev) => new Set(prev).add(clip.id));
     try {
       await deleteClip(clip.id);
-      toast.success("Clip deleted. The highlight reel is being updated.");
+      toast.success(`${clipName(clip)} deleted. The highlight reel is being updated.`);
       router.refresh();
     } catch (err) {
       setDeletingIds((prev) => {
@@ -472,8 +472,9 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
   }
 
   const isCustom = (clip: Clip) => clip.file_path.includes("/custom_");
-  const clipName = (clip: Clip, i: number) =>
-    clip.score === 0 ? "New clip" : clip.score < 0 ? "Failed clip" : isCustom(clip) ? `Custom clip #${i + 1}` : i === 0 ? "Best moment" : `Moment #${i + 1}`;
+  // Named by their start time, not their position: deleting a clip must not rename the ones below it.
+  const clipKind = (clip: Clip) => (clip.score === 0 ? "New clip" : clip.score < 0 ? "Failed clip" : isCustom(clip) ? "Custom clip" : "Moment");
+  const clipName = (clip: Clip) => `${clipKind(clip)} · ${formatTimeFull(clip.start_time)}`;
 
   const markPlan = planClipsFromMarks(marks, video.duration ?? 0, clips.map((c) => ({ start: c.start_time, end: c.end_time })));
 
@@ -518,7 +519,7 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
         </div>
       ) : null}
       <div className={dark ? "flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-2.5 pb-3" : "flex flex-col gap-2 md:max-h-[860px] md:overflow-y-auto md:pr-1"}>
-        {clips.map((clip, i) => {
+        {clips.map((clip) => {
           const url = clipUrls[clip.id];
           const active = selectedId === clip.id;
           const removing = deletingIds.has(clip.id);
@@ -554,9 +555,9 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
               >
                 {thumb}
                 <span className="flex min-w-0 flex-col gap-0.5">
-                  <span className="truncate text-[13px] font-semibold text-white">{clipName(clip, i)}</span>
+                  <span className="truncate text-[13px] font-semibold text-white">{clipName(clip)}</span>
                   <span className={`text-xs font-medium ${cutting ? "text-[#f5c76a]" : removing ? "text-[#ff9b90]" : "text-[#a9b3cc]"}`}>
-                    {cutting ? "Cutting…" : removing ? "Removing" : clip.player_name || formatTimeFull(clip.start_time)}
+                    {cutting ? "Cutting…" : removing ? "Removing" : clip.player_name || `${formatTimeFull(clip.start_time)} – ${formatTimeFull(clip.end_time)}`}
                   </span>
                 </span>
                 {editable ? (
@@ -598,8 +599,7 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
               <div className="flex min-w-0 flex-col gap-1 sm:gap-1.5">
                 <div className="flex items-center justify-between gap-1.5">
                   <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="truncate text-sm font-semibold text-[#0e0e12]">{clipName(clip, i)}</span>
-                    {isCustom(clip) && clip.score > 0 ? <span className="shrink-0 rounded bg-[#e6ebf5] px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-boys">Manual</span> : null}
+                    <span className="truncate text-sm font-semibold text-[#0e0e12]">{clipName(clip)}</span>
                   </span>
                   {editable ? (
                     <button
@@ -667,7 +667,7 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
     : !isFullMatch
       ? "Switch to the full match to cut a new clip."
       : duplicateOf
-        ? `This range is already "${clipName(duplicateOf, clips.indexOf(duplicateOf))}". Move the selection to cut a new moment.`
+        ? `This range is already "${clipName(duplicateOf)}". Move the selection to cut a new moment.`
         : undefined;
   const selectionLabel = `${formatTimeFull(trimStart)} – ${formatTimeFull(trimEnd)} (${trimDuration.toFixed(0)}s)`;
   // The clip is cut from the selection, not from where the video is paused: say so when they differ.
@@ -680,7 +680,10 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
   const minutes = Math.floor(videoDuration / 60);
   const labelEvery = videoDuration > 1200 ? 5 : 1;
   const ranges = clips.map((c) => ({ clip: c, range: clipRange(c) })).filter((r): r is { clip: Clip; range: [number, number] } => !!r.range);
-  const { lanes, count: laneCount } = laneFor(ranges.map((r) => pct(r.range[0])), 3.4 / zoom);
+  // Badges are kept inside the track (clamped near the edges), so lanes are computed from the clamped spots.
+  const badgeGapPct = 4.8 / zoom;
+  const badgePct = (start: number) => Math.min(100 - badgeGapPct * 0.6, Math.max(badgeGapPct * 0.6, pct(start)));
+  const { lanes, count: laneCount } = laneFor(ranges.map((r) => badgePct(r.range[0])), badgeGapPct);
 
   const ctl = {
     square: `flex size-11 shrink-0 items-center justify-center rounded-lg border sm:size-10 ${dark ? "border-[#3a4560] text-white hover:bg-white/10" : "border-[#d5d9e2] bg-white text-[#0e0e12] hover:bg-[#f4f5f8]"}`,
@@ -845,7 +848,6 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
         {ranges.length > 0 ? (
           <div className="relative mt-1.5" style={{ height: laneCount * 22 }}>
             {ranges.map((r, idx) => {
-              const n = clips.indexOf(r.clip) + 1;
               const pendingMarker = r.clip.score === 0;
               const removingMarker = deletingIds.has(r.clip.id);
               const markerTone = removingMarker
@@ -859,12 +861,12 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
                 <button
                   key={r.clip.id}
                   type="button"
-                  title={clipName(r.clip, n - 1)}
+                  title={clipName(r.clip)}
                   onClick={() => jumpToClip(r.clip)}
                   className={`absolute -translate-x-1/2 whitespace-nowrap rounded-full border px-1.5 font-mono text-[11px] font-semibold leading-[18px] ${markerTone}`}
-                  style={{ left: `${pct(r.range[0])}%`, top: lanes[idx] * 22 }}
+                  style={{ left: `${badgePct(r.range[0])}%`, top: lanes[idx] * 22 }}
                 >
-                  #{n}
+                  {formatTimeFull(r.range[0])}
                 </button>
               );
             })}
