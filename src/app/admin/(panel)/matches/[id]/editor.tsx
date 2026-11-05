@@ -5,9 +5,10 @@
 // Presentation follows design/comets-admin-editor.claude-design.html (4a–4k).
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Pause, Play, SkipBack, SkipForward, Trash2 } from "lucide-react";
+import { Flag, Loader2, Pause, Play, SkipBack, SkipForward, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import type { ClipWithPlayer as Clip, Team } from "@/lib/db/types";
+import { MARK_AFTER_SECONDS, MARK_BEFORE_SECONDS, planClipsFromMarks } from "@/lib/videos/marks";
 import type { VideoView } from "@/lib/videos/status";
 import { assignPlayer, createCustomClip, deleteClip, type MatchState } from "./actions";
 import { NameCombobox } from "@/components/name-combobox";
@@ -115,6 +116,33 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
   const [maximized, setMaximized] = useState(false);
   /** Clip picked from the list or the timeline; highlighting follows this, not the playhead. */
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // "Mark while watching": match-time marks, kept per match in this browser until clips are cut from them.
+  const marksKey = `comets:marks:${video.id}`;
+  const [marks, setMarks] = useState<number[]>([]);
+  const [marksLoaded, setMarksLoaded] = useState(false);
+  const [creatingMarks, setCreatingMarks] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try {
+        const saved = JSON.parse(localStorage.getItem(marksKey) ?? "[]");
+        if (Array.isArray(saved) && saved.every((n) => typeof n === "number")) setMarks(saved);
+      } catch {
+        // ignore a corrupt entry
+      }
+      setMarksLoaded(true);
+    }, 0);
+    return () => clearTimeout(t);
+  }, [marksKey]);
+  useEffect(() => {
+    // Never write before the saved marks were read, or the empty initial state would erase them.
+    if (!marksLoaded) return;
+    try {
+      if (marks.length) localStorage.setItem(marksKey, JSON.stringify(marks));
+      else localStorage.removeItem(marksKey);
+    } catch {
+      // storage unavailable (private mode): marks just live in memory
+    }
+  }, [marks, marksKey, marksLoaded]);
   // Entering/leaving fullscreen re-creates the player; remember where we were to resume there.
   const [resume, setResume] = useState<{ time: number; playing: boolean } | null>(null);
   function setMax(next: boolean) {
@@ -276,6 +304,9 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
         seekTo(currentTime + 5);
+      } else if (e.key === "m" || e.key === "M") {
+        e.preventDefault();
+        addMark();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -295,6 +326,16 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
     setSelectedId(null);
     setTrimStart(Math.max(0, time - 5));
     setTrimEnd(Math.min(videoDuration, time + 10));
+  }
+
+  function addMark() {
+    if (!isFullMatch || !view.canCut) return;
+    const t = Math.round((playerRef.current?.currentTime() ?? currentTime) * 10) / 10;
+    setMarks((prev) => (prev.some((m) => Math.abs(m - t) < 1) ? prev : [...prev, t].sort((a, b) => a - b)));
+    toast.success(`Marked ${formatTimeFull(t)}`, { duration: 1200 });
+  }
+  function removeMark(t: number) {
+    setMarks((prev) => prev.filter((m) => m !== t));
   }
 
   /** Clicking the track seeks; outside the current selection it also moves the selection there. */
@@ -400,6 +441,29 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
   const isCustom = (clip: Clip) => clip.file_path.includes("/custom_");
   const clipName = (clip: Clip, i: number) =>
     clip.score === 0 ? "New clip" : clip.score < 0 ? "Failed clip" : isCustom(clip) ? `Custom clip #${i + 1}` : i === 0 ? "Best moment" : `Moment #${i + 1}`;
+
+  const markPlan = planClipsFromMarks(marks, video.duration ?? 0, clips.map((c) => ({ start: c.start_time, end: c.end_time })));
+
+  async function handleCreateFromMarks() {
+    if (creatingMarks || markPlan.ranges.length === 0) return;
+    setCreatingMarks(true);
+    let created = 0;
+    let firstError: string | null = null;
+    for (const [start, end] of markPlan.ranges) {
+      try {
+        await createCustomClip(video.id, start, end);
+        created++;
+      } catch (err) {
+        firstError ??= err instanceof Error ? err.message : "Failed to create clip";
+      }
+    }
+    if (created) toast.success(`${created} clip${created === 1 ? "" : "s"} queued. The worker cuts them one by one.`);
+    if (markPlan.skipped.length) toast.info(`${markPlan.skipped.length} mark${markPlan.skipped.length === 1 ? "" : "s"} skipped: that clip already exists.`);
+    if (firstError) toast.error(firstError);
+    setMarks([]);
+    setCreatingMarks(false);
+    router.refresh();
+  }
 
   const dark = maximized;
 
@@ -659,6 +723,20 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
       <span className={`ml-auto font-mono text-sm font-semibold sm:ml-2 sm:text-[15px] ${dark ? "text-white" : "text-[#0e0e12]"}`}>
         {formatTimeFull(currentTime)} <span className={dark ? "text-[#a9b3cc]" : "text-[#5b6070]"}>/ {formatTimeFull(videoDuration)}</span>
       </span>
+      {isFullMatch && view.canCut ? (
+        <button
+          type="button"
+          onClick={addMark}
+          title="Mark this moment (M)"
+          className={`inline-flex h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 text-sm font-semibold transition sm:ml-2 sm:h-10 ${
+            dark ? "border-[#f5c76a] text-[#f5c76a] hover:bg-[#f5c76a]/10" : "border-[#f5d58a] bg-[#fff4db] text-[#7a4a00] hover:bg-[#fde9b8]"
+          }`}
+        >
+          <Flag className="size-4" aria-hidden="true" />
+          Mark
+          <kbd className="hidden rounded border border-current/40 px-1 font-mono text-[10px] sm:inline">M</kbd>
+        </button>
+      ) : null}
       <div role="group" aria-label="Timeline zoom" className={`hidden items-center overflow-hidden rounded-lg border sm:ml-auto sm:flex ${dark ? "border-[#3a4560]" : "border-[#d5d9e2]"}`}>
         <button type="button" aria-label="Zoom out" onClick={() => setZoom(ZOOM_STEPS[Math.max(0, ZOOM_STEPS.indexOf(zoom) - 1)])} className={`size-9 text-lg font-semibold ${dark ? "text-white hover:bg-white/10" : "bg-white text-[#0e0e12] hover:bg-[#f4f5f8]"}`}>
           −
@@ -744,6 +822,24 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
               style={{ left: `${pct(r.range[0])}%`, width: `${pct(r.range[1]) - pct(r.range[0])}%` }}
             />
           ))}
+          {isFullMatch
+            ? marks.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  aria-label={`Mark at ${formatTimeFull(m)}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    seekTo(m);
+                    selectAround(m);
+                  }}
+                  className="absolute -top-2 bottom-0 z-10 w-0.5 bg-[#f5a524]"
+                  style={{ left: `${pct(m)}%` }}
+                >
+                  <span className="absolute -top-1 left-1/2 size-2.5 -translate-x-1/2 rotate-45 rounded-[2px] bg-[#f5a524]" />
+                </button>
+              ))
+            : null}
           <div
             className={`absolute -bottom-1 -top-1 border-y-2 ${dark ? "border-white bg-white/25" : "border-boys bg-boys/20"}`}
             style={{ left: `${pct(trimStart)}%`, width: `${Math.max(0, pct(trimEnd) - pct(trimStart))}%` }}
@@ -782,6 +878,49 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
       </div>
     </div>
   );
+
+  const marksStrip =
+    isFullMatch && marks.length > 0 ? (
+      <div className={`flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 ${dark ? "border-[#3a4560] bg-[#121a2e]" : "border-[#f5d58a] bg-[#fff4db]"}`}>
+        <span className={`text-xs font-semibold ${dark ? "text-[#f5c76a]" : "text-[#7a4a00]"}`}>
+          Marks · {marks.length}
+        </span>
+        {marks.map((m) => (
+          <span key={m} className={`inline-flex items-center overflow-hidden rounded-full border ${dark ? "border-[#3a4560] bg-[#1a2236]" : "border-[#f5d58a] bg-white"}`}>
+            <button
+              type="button"
+              onClick={() => {
+                seekTo(m);
+                selectAround(m);
+              }}
+              className={`px-2 py-0.5 font-mono text-xs font-semibold ${dark ? "text-white" : "text-[#0e0e12]"}`}
+            >
+              {formatTimeFull(m)}
+            </button>
+            <button type="button" aria-label={`Remove mark at ${formatTimeFull(m)}`} onClick={() => removeMark(m)} className={`flex size-6 items-center justify-center ${dark ? "text-[#a9b3cc] hover:text-white" : "text-[#7a4a00] hover:bg-[#fde9b8]"}`}>
+              <X className="size-3" aria-hidden="true" />
+            </button>
+          </span>
+        ))}
+        <span className="ml-auto flex items-center gap-2">
+          <button type="button" onClick={() => setMarks([])} className={`text-xs font-semibold underline ${dark ? "text-[#a9b3cc]" : "text-[#7a4a00]"}`}>
+            Clear
+          </button>
+          <button
+            type="button"
+            onClick={handleCreateFromMarks}
+            disabled={creatingMarks || markPlan.ranges.length === 0}
+            title={`${MARK_BEFORE_SECONDS}s before and ${MARK_AFTER_SECONDS}s after each mark`}
+            className={`inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-[13px] font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+              dark ? "bg-white text-boys hover:bg-[#eef0f4]" : "bg-boys text-white hover:bg-boys-deep"
+            }`}
+          >
+            {creatingMarks ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
+            Create clips from marks ({markPlan.ranges.length})
+          </button>
+        </span>
+      </div>
+    ) : null;
 
   const jumpForm = (
     <form
@@ -889,6 +1028,7 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
           <div className="flex min-h-0 flex-1 items-center justify-center">{player}</div>
           {controls}
           {timeline}
+          {marksStrip}
           {trimRow}
         </div>
         {clipsPanel}
@@ -911,6 +1051,7 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
         {controls}
         {mobileZoomRow}
         {timeline}
+        {marksStrip}
         {trimRow}
       </div>
       {clipsPanel}
