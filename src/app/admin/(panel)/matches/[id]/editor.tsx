@@ -259,6 +259,13 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
     const onWaiting = () => startBuffering();
     const onPlaying = () => stopBuffering();
     const onSeeked = () => stopBuffering();
+    // Keep the play/pause state in sync when playback starts from somewhere other than the
+    // play button (a clip click, the video's own controls, the end of the file).
+    const onPlay = () => setPlaying(true);
+    const onPause = () => setPlaying(false);
+    el.addEventListener("play", onPlay);
+    el.addEventListener("pause", onPause);
+    el.addEventListener("ended", onPause);
     el.addEventListener("timeupdate", onTimeUpdate);
     el.addEventListener("canplay", onCanPlay);
     el.addEventListener("loadedmetadata", onMeta);
@@ -268,6 +275,9 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
     el.addEventListener("seeked", onSeeked);
     if (el.readyState >= 3) setVideoReady(true);
     return () => {
+      el.removeEventListener("play", onPlay);
+      el.removeEventListener("pause", onPause);
+      el.removeEventListener("ended", onPause);
       el.removeEventListener("timeupdate", onTimeUpdate);
       el.removeEventListener("canplay", onCanPlay);
       el.removeEventListener("loadedmetadata", onMeta);
@@ -458,6 +468,8 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
     setTrimStart(range[0]);
     setTrimEnd(range[1]);
     seekTo(range[0]);
+    // Picking a clip is "show me this": start playing it right away.
+    playerRef.current?.play();
   }
 
   // The clip under the playhead is the highlighted one; a clicked clip stays highlighted
