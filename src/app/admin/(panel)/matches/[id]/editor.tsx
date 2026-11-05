@@ -585,7 +585,7 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
   );
 
   const timeline = (
-    <div className={`overflow-x-auto pb-2 pt-1 ${dark ? "" : "-mx-3 sm:mx-0"}`}>
+    <div className={`overflow-y-hidden pb-3 pt-1 ${zoom > 1 ? "overflow-x-auto" : "overflow-x-hidden"} ${dark ? "" : "-mx-3 sm:mx-0"}`}>
       <div className="relative box-border px-[18px] sm:px-3" style={{ width: `${zoom * 100}%` }}>
         {/* Ruler */}
         <div className="relative h-7">
