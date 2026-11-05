@@ -12,6 +12,7 @@ vi.mock("@/lib/videos/repo", () => ({
   updateVideo: vi.fn(),
 }));
 vi.mock("@/lib/r2/client", () => ({ deleteObjects: vi.fn(), presignGet: vi.fn() }));
+vi.mock("@/lib/videos/marks-repo", () => ({ listMarks: vi.fn() }));
 
 import { requireMember } from "@/lib/auth/members";
 import { deleteObjects } from "@/lib/r2/client";

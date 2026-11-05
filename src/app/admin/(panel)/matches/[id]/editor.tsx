@@ -11,6 +11,7 @@ import type { ClipWithPlayer as Clip, Team } from "@/lib/db/types";
 import { MARK_AFTER_SECONDS, MARK_BEFORE_SECONDS, planClipsFromMarks } from "@/lib/videos/marks";
 import type { VideoView } from "@/lib/videos/status";
 import { assignPlayer, createCustomClip, deleteClip, type MatchState } from "./actions";
+import { addMark as saveMark, clearMarks, removeMark as dropMark } from "./marks-actions";
 import { NameCombobox } from "@/components/name-combobox";
 import { useHls } from "@/components/hls-video";
 import { YouTubePlayer, type PlayerHandle } from "./youtube-player";
@@ -116,33 +117,46 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
   const [maximized, setMaximized] = useState(false);
   /** Clip picked from the list or the timeline; highlighting follows this, not the playhead. */
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  // "Mark while watching": match-time marks, kept per match in this browser until clips are cut from them.
-  const marksKey = `comets:marks:${video.id}`;
-  const [marks, setMarks] = useState<number[]>([]);
-  const [marksLoaded, setMarksLoaded] = useState(false);
+  // "Mark while watching": match-time marks, saved per video on the server (shared by every
+  // coach and device) until clips are cut from them. Shown optimistically, re-synced on refresh.
+  const [marks, setMarks] = useState<number[]>(state.marks);
+  const [serverMarks, setServerMarks] = useState(state.marks);
+  if (state.marks !== serverMarks) {
+    setServerMarks(state.marks);
+    setMarks(state.marks);
+  }
   const [creatingMarks, setCreatingMarks] = useState(false);
   useEffect(() => {
-    const t = setTimeout(() => {
-      try {
-        const saved = JSON.parse(localStorage.getItem(marksKey) ?? "[]");
-        if (Array.isArray(saved) && saved.every((n) => typeof n === "number")) setMarks(saved);
-      } catch {
-        // ignore a corrupt entry
-      }
-      setMarksLoaded(true);
-    }, 0);
-    return () => clearTimeout(t);
-  }, [marksKey]);
-  useEffect(() => {
-    // Never write before the saved marks were read, or the empty initial state would erase them.
-    if (!marksLoaded) return;
+    // Marks made before they were stored on the server lived in this browser: move them over once.
+    const key = `comets:marks:${video.id}`;
+    let saved: number[] = [];
     try {
-      if (marks.length) localStorage.setItem(marksKey, JSON.stringify(marks));
-      else localStorage.removeItem(marksKey);
+      const parsed = JSON.parse(localStorage.getItem(key) ?? "[]");
+      if (Array.isArray(parsed) && parsed.every((n) => typeof n === "number")) saved = parsed;
     } catch {
-      // storage unavailable (private mode): marks just live in memory
+      // ignore a corrupt entry
     }
-  }, [marks, marksKey, marksLoaded]);
+    if (saved.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      let latest: number[] | null = null;
+      for (const t of saved) {
+        try {
+          latest = await saveMark(video.id, t);
+        } catch {
+          return; // keep the local copy; we'll try again next time
+        }
+      }
+      localStorage.removeItem(key);
+      if (!cancelled && latest) {
+        setMarks(latest);
+        toast.info(`${saved.length} mark${saved.length === 1 ? "" : "s"} from this browser saved to the match.`);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [video.id]);
   // Entering/leaving fullscreen re-creates the player; remember where we were to resume there.
   const [resume, setResume] = useState<{ time: number; playing: boolean } | null>(null);
   function setMax(next: boolean) {
@@ -331,11 +345,30 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
   function addMark() {
     if (!isFullMatch || !view.canCut) return;
     const t = Math.round((playerRef.current?.currentTime() ?? currentTime) * 10) / 10;
-    setMarks((prev) => (prev.some((m) => Math.abs(m - t) < 1) ? prev : [...prev, t].sort((a, b) => a - b)));
+    if (marks.some((m) => Math.abs(m - t) < 1)) return;
+    const before = marks;
+    setMarks([...marks, t].sort((a, b) => a - b));
     toast.success(`Marked ${formatTimeFull(t)}`, { duration: 1200 });
+    saveMark(video.id, t).then(setMarks, (err) => {
+      setMarks(before);
+      toast.error(err instanceof Error ? err.message : "Failed to save mark");
+    });
   }
   function removeMark(t: number) {
-    setMarks((prev) => prev.filter((m) => m !== t));
+    const before = marks;
+    setMarks(marks.filter((m) => m !== t));
+    dropMark(video.id, t).then(setMarks, (err) => {
+      setMarks(before);
+      toast.error(err instanceof Error ? err.message : "Failed to remove mark");
+    });
+  }
+  function handleClearMarks() {
+    const before = marks;
+    setMarks([]);
+    clearMarks(video.id).catch((err) => {
+      setMarks(before);
+      toast.error(err instanceof Error ? err.message : "Failed to clear marks");
+    });
   }
 
   /** Clicking the track seeks; outside the current selection it also moves the selection there. */
@@ -460,7 +493,12 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
     if (created) toast.success(`${created} clip${created === 1 ? "" : "s"} queued. The worker cuts them one by one.`);
     if (markPlan.skipped.length) toast.info(`${markPlan.skipped.length} mark${markPlan.skipped.length === 1 ? "" : "s"} skipped: that clip already exists.`);
     if (firstError) toast.error(firstError);
-    setMarks([]);
+    try {
+      await clearMarks(video.id);
+      setMarks([]);
+    } catch {
+      toast.error("Clips were created but the marks could not be cleared. Use Clear.");
+    }
     setCreatingMarks(false);
     router.refresh();
   }
@@ -502,11 +540,17 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
           );
           if (dark) {
             return (
-              <button
+              <div
                 key={clip.id}
-                type="button"
+                role="button"
+                tabIndex={0}
                 onClick={() => jumpToClip(clip)}
-                className={`grid grid-cols-[80px_minmax(0,1fr)] items-center gap-2.5 rounded-lg border p-1.5 text-left ${active ? "border-white" : "border-[#26304a]"}`}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") jumpToClip(clip);
+                }}
+                className={`grid cursor-pointer grid-cols-[80px_minmax(0,1fr)_auto] items-center gap-2.5 rounded-lg border p-1.5 text-left ${
+                  removing ? "pointer-events-none border-[#5a2a2a]" : active ? "border-white" : "border-[#26304a] hover:border-[#3a4560]"
+                }`}
               >
                 {thumb}
                 <span className="flex min-w-0 flex-col gap-0.5">
@@ -515,7 +559,22 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
                     {cutting ? "Cutting…" : removing ? "Removing" : clip.player_name || formatTimeFull(clip.start_time)}
                   </span>
                 </span>
-              </button>
+                {editable ? (
+                  <button
+                    type="button"
+                    aria-label="Delete clip"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void handleDeleteClip(clip);
+                    }}
+                    className="flex size-8 shrink-0 items-center justify-center rounded-md text-[#a9b3cc] transition hover:bg-white/10 hover:text-[#ff9b90]"
+                  >
+                    <Trash2 className="size-4" aria-hidden="true" />
+                  </button>
+                ) : (
+                  <span className="size-8 shrink-0" />
+                )}
+              </div>
             );
           }
           return (
@@ -903,7 +962,7 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
           </span>
         ))}
         <span className="ml-auto flex items-center gap-2">
-          <button type="button" onClick={() => setMarks([])} className={`text-xs font-semibold underline ${dark ? "text-[#a9b3cc]" : "text-[#7a4a00]"}`}>
+          <button type="button" onClick={handleClearMarks} className={`text-xs font-semibold underline ${dark ? "text-[#a9b3cc]" : "text-[#7a4a00]"}`}>
             Clear
           </button>
           <button

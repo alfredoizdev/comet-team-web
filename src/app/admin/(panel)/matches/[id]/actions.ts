@@ -7,6 +7,7 @@ import { deleteObjects, headObject, presignGet } from "@/lib/r2/client";
 import { customClipKey } from "@/lib/r2/keys";
 import { hlsMasterUrl } from "@/lib/videos/hls";
 import { validateClipRange } from "@/lib/videos/clip-range";
+import * as marksRepo from "@/lib/videos/marks-repo";
 import { parseYouTubeUrl } from "@/lib/videos/youtube";
 import * as repo from "@/lib/videos/repo";
 import { describeVideo, type VideoView } from "@/lib/videos/status";
@@ -24,6 +25,8 @@ export type MatchState = {
   sourceSize: number | null;
   /** YouTube video id when the match was imported from a link (full match is streamed from YouTube). */
   youtubeId: string | null;
+  /** Marks (seconds) set while watching, shared by every coach until clips are cut from them. */
+  marks: number[];
 };
 
 export async function getMatchState(projectId: string): Promise<MatchState | null> {
@@ -35,19 +38,20 @@ export async function getMatchState(projectId: string): Promise<MatchState | nul
   const video = await repo.getVideoForProject(projectId);
   const view = describeVideo(video);
   const players = await repo.listPlayerNames(project.team);
-  if (!video) return { project, video, clips: [], players, view, urls: { source: null, reel: null, clips: {} }, sourceSize: null, youtubeId: null };
+  if (!video) return { project, video, clips: [], players, view, urls: { source: null, reel: null, clips: {} }, sourceSize: null, youtubeId: null, marks: [] };
   const youtubeId = video.source_url ? (parseYouTubeUrl(video.source_url)?.id ?? null) : null;
 
   const clips = await repo.listClips(video.id);
   const ready = clips.filter((c) => c.score > 0);
   const hasMaster = !video.source_deleted_at && !youtubeId;
-  const [source, reel, clipUrls, head] = await Promise.all([
+  const [source, reel, clipUrls, head, marks] = await Promise.all([
     video.hls_path ? hlsMasterUrl(video.id) : hasMaster ? presignGet(video.file_path) : null,
     video.highlight_reel_path ? presignGet(video.highlight_reel_path) : null,
     Promise.all(ready.map(async (c) => [c.id, await presignGet(c.file_path)] as const)),
     hasMaster ? headObject(video.file_path) : null,
+    marksRepo.listMarks(video.id),
   ]);
-  return { project, video, clips, players, view, urls: { source, reel, clips: Object.fromEntries(clipUrls) }, sourceSize: head?.size ?? null, youtubeId };
+  return { project, video, clips, players, view, urls: { source, reel, clips: Object.fromEntries(clipUrls) }, sourceSize: head?.size ?? null, youtubeId, marks };
 }
 
 export async function createCustomClip(videoId: string, start: number, end: number): Promise<{ clipId: string }> {
