@@ -117,6 +117,9 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
   const [maximized, setMaximized] = useState(false);
   /** Clip picked from the list or the timeline; highlighting follows this, not the playhead. */
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  /** Last clip the reel playhead was followed into (so the selection moves once per clip, not every tick). */
+  const [followedId, setFollowedId] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   // "Mark while watching": match-time marks, saved per video on the server (shared by every
   // coach and device) until clips are cut from them. Shown optimistically, re-synced on refresh.
   const [marks, setMarks] = useState<number[]>(state.marks);
@@ -271,6 +274,7 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
     playerRef.current = null;
     setSourceIndex(i);
     setSelectedId(null);
+    setFollowedId(null);
     setResume(null);
     setTrimStart(0);
     setTrimEnd(Math.min(15, sources[i]?.duration || 15));
@@ -445,6 +449,32 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
     seekTo(range[0]);
   }
 
+  // The clip under the playhead is the highlighted one; a clicked clip stays highlighted
+  // while the playhead is outside every clip (full match).
+  const playheadClip = clips.find((c) => {
+    const r = clipRange(c);
+    return !!r && currentTime >= r[0] && currentTime < r[1];
+  });
+  const activeId = playheadClip?.id ?? selectedId;
+  if (!isFullMatch && playheadClip && playheadClip.id !== followedId) {
+    // Reel: the selection block follows the playhead from clip to clip.
+    const range = clipRange(playheadClip)!;
+    setFollowedId(playheadClip.id);
+    setSelectedId(playheadClip.id);
+    setTrimStart(range[0]);
+    setTrimEnd(range[1]);
+  }
+  useEffect(() => {
+    // Keep the highlighted card in view inside the list (never scrolls the page).
+    const list = listRef.current;
+    const card = activeId ? list?.querySelector<HTMLElement>(`[data-clip-id="${activeId}"]`) : null;
+    if (!list || !card) return;
+    const top = card.offsetTop - list.offsetTop;
+    const bottom = top + card.offsetHeight;
+    if (top < list.scrollTop) list.scrollTo({ top, behavior: "smooth" });
+    else if (bottom > list.scrollTop + list.clientHeight) list.scrollTo({ top: bottom - list.clientHeight, behavior: "smooth" });
+  }, [activeId]);
+
   async function handlePlayer(clip: Clip, name: string) {
     try {
       await assignPlayer(clip.id, name || null);
@@ -518,10 +548,10 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
           <span>Updating highlight reel… the current reel stays live until the new one is ready.</span>
         </div>
       ) : null}
-      <div className={dark ? "flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-2.5 pb-3" : "flex flex-col gap-2 md:max-h-[860px] md:overflow-y-auto md:pr-1"}>
+      <div ref={listRef} className={dark ? "relative flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-2.5 pb-3" : "relative flex flex-col gap-2 md:max-h-[860px] md:overflow-y-auto md:pr-1"}>
         {clips.map((clip) => {
           const url = clipUrls[clip.id];
-          const active = selectedId === clip.id;
+          const active = activeId === clip.id;
           const removing = deletingIds.has(clip.id);
           const cutting = clip.score === 0;
           const editable = !removing && !cutting;
@@ -543,6 +573,7 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
             return (
               <div
                 key={clip.id}
+                data-clip-id={clip.id}
                 role="button"
                 tabIndex={0}
                 onClick={() => jumpToClip(clip)}
@@ -581,6 +612,7 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
           return (
             <div
               key={clip.id}
+              data-clip-id={clip.id}
               role="button"
               tabIndex={0}
               onClick={() => jumpToClip(clip)}
@@ -854,7 +886,7 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
                 ? dark ? "border-[#7a2a24] bg-[#3a1512] text-[#ff9b90]" : "border-[#f6c9c5] bg-[#fdecec] text-[#b42318]"
                 : pendingMarker
                   ? dark ? "border-[#7a5a1a] bg-[#3a2a0c] text-[#f5c76a]" : "border-[#f5d58a] bg-[#fff4db] text-[#7a4a00]"
-                  : selectedId === r.clip.id
+                  : activeId === r.clip.id
                     ? dark ? "border-white bg-white text-boys" : "border-boys bg-boys text-white"
                     : dark ? "border-[#2f7a4f] bg-[#163a27] text-[#bfebd0]" : "border-[#9fd8b4] bg-[#e3f5ea] text-[#146c3a] hover:bg-[#cdeedb]";
               return (
@@ -866,7 +898,7 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
                   className={`absolute -translate-x-1/2 whitespace-nowrap rounded-full border px-1.5 font-mono text-[11px] font-semibold leading-[18px] ${markerTone}`}
                   style={{ left: `${badgePct(r.range[0])}%`, top: lanes[idx] * 22 }}
                 >
-                  {formatTimeFull(r.range[0])}
+                  {formatTimeFull(r.clip.start_time)}
                 </button>
               );
             })}
