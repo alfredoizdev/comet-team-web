@@ -265,9 +265,19 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
     return x * videoDuration;
   }
 
+  /** Moves the selection to 5 s before / 10 s after `time` (what "Set around playhead" does). */
+  function selectAround(time: number) {
+    setSelectedId(null);
+    setTrimStart(Math.max(0, time - 5));
+    setTrimEnd(Math.min(videoDuration, time + 10));
+  }
+
+  /** Clicking the track seeks; outside the current selection it also moves the selection there. */
   function handleTimelineClick(e: React.MouseEvent<HTMLDivElement>) {
     if (dragging) return;
-    seekTo(timeAtClientX(e.clientX));
+    const time = timeAtClientX(e.clientX);
+    seekTo(time);
+    if (time < trimStart || time > trimEnd) selectAround(time);
   }
 
   function handleTrimDrag(e: React.MouseEvent | React.TouchEvent, type: "start" | "end") {
@@ -512,6 +522,11 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
         ? `This range is already "${clipName(duplicateOf, clips.indexOf(duplicateOf))}". Move the selection to cut a new moment.`
         : undefined;
   const selectionLabel = `${formatTimeFull(trimStart)} – ${formatTimeFull(trimEnd)} (${trimDuration.toFixed(0)}s)`;
+  // The clip is cut from the selection, not from where the video is paused: say so when they differ.
+  const playheadOutside = isFullMatch && videoReady && (currentTime < trimStart - 0.5 || currentTime > trimEnd + 0.5);
+  const selectionHint = playheadOutside
+    ? `The video is at ${formatTimeFull(currentTime)} but the clip will be cut at ${formatTimeFull(trimStart)} – ${formatTimeFull(trimEnd)}. Use "Set around playhead" to cut here.`
+    : null;
 
   // Timeline model: labels every 5 min (1 min on short sources), minute ticks, markers in lanes.
   const minutes = Math.floor(videoDuration / 60);
@@ -742,8 +757,7 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
         const time = parseTime(jumpInput);
         if (time > 0 && time <= videoDuration) {
           seekTo(time);
-          setTrimStart(Math.max(0, time - 5));
-          setTrimEnd(Math.min(videoDuration, time + 10));
+          selectAround(time);
           setJumpInput("");
         }
       }}
@@ -758,11 +772,8 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
   const setAroundButton = (
     <button
       type="button"
-      onClick={() => {
-        setTrimStart(Math.max(0, currentTime - 5));
-        setTrimEnd(Math.min(videoDuration, currentTime + 10));
-      }}
-      className={ctl.outline}
+      onClick={() => selectAround(currentTime)}
+      className={`${ctl.outline} ${playheadOutside ? (dark ? "border-white" : "border-boys text-boys") : ""}`}
     >
       Set around playhead
     </button>
@@ -824,7 +835,7 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
       </div>
       {setAroundButton}
       {createButton}
-      {cutTitle ? <p className="w-full text-xs text-[#5b6070]">{cutTitle}</p> : null}
+      {cutTitle ? <p className="w-full text-xs text-[#5b6070]">{cutTitle}</p> : selectionHint ? <p className="w-full text-xs font-medium text-[#7a4a00]">{selectionHint}</p> : null}
     </div>
   );
 
