@@ -113,6 +113,22 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
   const [jumpInput, setJumpInput] = useState("");
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [maximized, setMaximized] = useState(false);
+  /** Clip picked from the list or the timeline; highlighting follows this, not the playhead. */
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // The "Buffering…" overlay only shows when a stall lasts; a quick seek must not flash it.
+  const bufferTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stopBuffering = () => {
+    if (bufferTimer.current) clearTimeout(bufferTimer.current);
+    bufferTimer.current = null;
+    setBuffering(false);
+  };
+  const startBuffering = () => {
+    if (bufferTimer.current) return;
+    bufferTimer.current = setTimeout(() => {
+      bufferTimer.current = null;
+      setBuffering(true);
+    }, 600);
+  };
 
   // Fullscreen editor: Esc leaves it, and the body does not scroll behind it.
   useEffect(() => {
@@ -161,9 +177,9 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
     const onTimeUpdate = () => setCurrentTime(el.currentTime);
     const onCanPlay = () => setVideoReady(true);
     const onMeta = () => setMediaDuration(el.duration || 0);
-    const onWaiting = () => setBuffering(true);
-    const onPlaying = () => setBuffering(false);
-    const onSeeked = () => setBuffering(false);
+    const onWaiting = () => startBuffering();
+    const onPlaying = () => stopBuffering();
+    const onSeeked = () => stopBuffering();
     el.addEventListener("timeupdate", onTimeUpdate);
     el.addEventListener("canplay", onCanPlay);
     el.addEventListener("loadedmetadata", onMeta);
@@ -180,6 +196,7 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
       el.removeEventListener("playing", onPlaying);
       el.removeEventListener("seeking", onWaiting);
       el.removeEventListener("seeked", onSeeked);
+      stopBuffering();
     };
   }, [videoUrl]);
 
@@ -187,6 +204,7 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
     if (i === sourceIndex) return;
     playerRef.current = null;
     setSourceIndex(i);
+    setSelectedId(null);
     setTrimStart(0);
     setTrimEnd(Math.min(15, sources[i]?.duration || 15));
     setCurrentTime(0);
@@ -312,6 +330,7 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
   function jumpToClip(clip: Clip) {
     const range = clipRange(clip);
     if (!range) return;
+    setSelectedId(clip.id);
     setTrimStart(range[0]);
     setTrimEnd(range[1]);
     seekTo(range[0]);
@@ -362,8 +381,7 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
       <div className={dark ? "flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-2.5 pb-3" : "flex flex-col gap-2 md:max-h-[860px] md:overflow-y-auto md:pr-1"}>
         {clips.map((clip, i) => {
           const url = clipUrls[clip.id];
-          const range = clipRange(clip);
-          const active = !!range && currentTime >= range[0] && currentTime <= range[1];
+          const active = selectedId === clip.id;
           const removing = deletingIds.has(clip.id);
           const cutting = clip.score === 0;
           const editable = !removing && !cutting;
@@ -531,7 +549,8 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
             setVideoReady(true);
           }}
           onState={(st) => {
-            setBuffering(st === "buffering");
+            if (st === "buffering") startBuffering();
+            else stopBuffering();
             if (st === "playing") setPlaying(true);
             if (st === "paused" || st === "ended") setPlaying(false);
           }}
@@ -629,15 +648,22 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
           <div className="relative mt-1.5" style={{ height: laneCount * 22 }}>
             {ranges.map((r, idx) => {
               const n = clips.indexOf(r.clip) + 1;
+              const pendingMarker = r.clip.score === 0;
+              const removingMarker = deletingIds.has(r.clip.id);
+              const markerTone = removingMarker
+                ? dark ? "border-[#7a2a24] bg-[#3a1512] text-[#ff9b90]" : "border-[#f6c9c5] bg-[#fdecec] text-[#b42318]"
+                : pendingMarker
+                  ? dark ? "border-[#7a5a1a] bg-[#3a2a0c] text-[#f5c76a]" : "border-[#f5d58a] bg-[#fff4db] text-[#7a4a00]"
+                  : selectedId === r.clip.id
+                    ? dark ? "border-white bg-white text-boys" : "border-boys bg-boys text-white"
+                    : dark ? "border-[#2f7a4f] bg-[#163a27] text-[#bfebd0]" : "border-[#9fd8b4] bg-[#e3f5ea] text-[#146c3a] hover:bg-[#cdeedb]";
               return (
                 <button
                   key={r.clip.id}
                   type="button"
                   title={clipName(r.clip, n - 1)}
                   onClick={() => jumpToClip(r.clip)}
-                  className={`absolute -translate-x-1/2 whitespace-nowrap rounded-full border px-1.5 font-mono text-[11px] font-semibold leading-[18px] ${
-                    dark ? "border-[#2f7a4f] bg-[#163a27] text-[#bfebd0]" : "border-[#9fd8b4] bg-[#e3f5ea] text-[#146c3a] hover:bg-[#cdeedb]"
-                  }`}
+                  className={`absolute -translate-x-1/2 whitespace-nowrap rounded-full border px-1.5 font-mono text-[11px] font-semibold leading-[18px] ${markerTone}`}
                   style={{ left: `${pct(r.range[0])}%`, top: lanes[idx] * 22 }}
                 >
                   #{n}
@@ -651,7 +677,9 @@ export function Editor({ state, team, title }: { state: MatchState; team: Team; 
           {ranges.map((r) => (
             <span
               key={r.clip.id}
-              className={`absolute bottom-0 top-0 min-w-[3px] ${dark ? "bg-[#2f7a4f]" : "bg-[#9fd8b4]"}`}
+              className={`absolute bottom-0 top-0 min-w-[3px] ${
+                deletingIds.has(r.clip.id) ? "bg-[#f6c9c5]" : r.clip.score === 0 ? "bg-[#f5d58a]" : dark ? "bg-[#2f7a4f]" : "bg-[#9fd8b4]"
+              }`}
               style={{ left: `${pct(r.range[0])}%`, width: `${pct(r.range[1]) - pct(r.range[0])}%` }}
             />
           ))}
