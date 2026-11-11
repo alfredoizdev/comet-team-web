@@ -12,7 +12,7 @@ export default function Home() {
       <InkBurst />
 
       <div
-        className="split-crest pointer-events-none absolute top-1/2 z-20 flex size-[150px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white shadow-[0_12px_40px_rgba(0,0,0,0.18)] md:size-[300px]"
+        className="split-crest pointer-events-none absolute top-1/2 z-20 flex size-[150px] -translate-x-1/2 -translate-y-1/2 items-center justify-center md:size-[300px]"
         aria-hidden="true"
       >
         <Image
@@ -21,7 +21,7 @@ export default function Home() {
           width={250}
           height={250}
           priority
-          className="size-[124px] object-contain md:size-[250px]"
+          className="size-[124px] object-contain drop-shadow-[0_8px_20px_rgba(0,0,0,0.35)] md:size-[250px]"
         />
       </div>
     </main>
