@@ -48,6 +48,7 @@ function TeamSide({ slug }: { slug: TeamSlug }) {
           {second}
         </span>
         <span
+          title="Ver videos del equipo"
           className={`${isGirls ? "border-boys text-boys hover:bg-boys" : "border-girls text-girls hover:bg-girls"} inline-flex min-h-12 items-center justify-center rounded-full border-[3px] px-7 text-base font-semibold uppercase [transition:transform_200ms,translate_200ms,background-color_200ms,color_200ms] hover:-translate-y-0.5 hover:text-white md:h-14 md:px-8 md:text-[17px]`}
         >
           Watch videos
