@@ -15,6 +15,7 @@ export default function Home() {
         className="split-crest pointer-events-none absolute top-1/2 z-20 flex size-[150px] -translate-x-1/2 -translate-y-1/2 items-center justify-center md:size-[300px]"
         aria-hidden="true"
       >
+        <span className="split-crest-ring pointer-events-none absolute inset-0 rounded-full" />
         <Image
           src={CREST_SRC}
           alt=""
