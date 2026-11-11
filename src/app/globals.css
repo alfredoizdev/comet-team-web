@@ -163,14 +163,14 @@
    corte queda en el centro del escudo, que siempre sigue a la línea divisoria.
    Celular: rosa arriba / azul abajo → borde azul arriba, rosa abajo. */
 .split-crest-ring {
-  --ring: 2px;
+  --ring: 5px;
   background: linear-gradient(to bottom, var(--boys) 50%, var(--girls) 50%);
   -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring)), #000 calc(100% - var(--ring)));
   mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring)), #000 calc(100% - var(--ring)));
 }
 @media (min-width: 48rem) {
   .split-crest-ring {
-    --ring: 3px;
+    --ring: 5px;
     background: linear-gradient(to right, var(--boys) 50%, var(--girls) 50%);
   }
 }
