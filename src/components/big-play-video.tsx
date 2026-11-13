@@ -37,7 +37,7 @@ export function BigPlayVideo({ src, label, team, ariaLabel }: { src: string; lab
             type="button"
             aria-label={ariaLabel}
             onClick={() => void ref.current?.play().catch(() => undefined)}
-            className={`absolute left-1/2 top-1/2 flex size-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white shadow-[0_8px_24px_rgba(0,0,0,0.3)] transition-transform hover:scale-105 md:size-24 ${team.text}`}
+            className={`absolute left-1/2 top-1/2 flex size-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-white shadow-[0_8px_24px_rgba(0,0,0,0.3)] transition-transform hover:scale-105 md:size-24 ${team.bg}`}
           >
             <Play className="ml-1 size-7 fill-current md:ml-1.5 md:size-10" />
           </button>
