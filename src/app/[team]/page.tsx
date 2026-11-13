@@ -49,7 +49,7 @@ async function TeamContent({ params }: { params: Promise<Params> }) {
 
   return (
     <div className="flex min-h-dvh flex-col bg-white">
-      <TeamHeader team={team} backHref="/" backLabel="Back to home" />
+      <TeamHeader team={team} backHref="/" backLabel="Back to home" tintBack />
 
       <main className="mx-auto flex w-full max-w-[1264px] flex-1 flex-col gap-8 px-5 pb-24 pt-8 sm:px-8 sm:pt-12 md:gap-12">
         <div className="flex items-baseline gap-3">
