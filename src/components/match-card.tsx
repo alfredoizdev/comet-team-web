@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Play } from "lucide-react";
 import { BigPlayVideo } from "@/components/big-play-video";
+import { YouTubeBigPlay } from "@/components/youtube-big-play";
 import { MomentsGallery } from "@/components/moments-gallery";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VideoPoster } from "@/components/video-poster";
@@ -116,30 +117,10 @@ function FullMatchPlayer({ source, title, team, length }: { source: PublicFullMa
       {source.kind === "hls" ? (
         <BigPlayVideo src={source.url} label={length ? `Full match · ${length}` : "Full match"} team={team} ariaLabel="Play full match" />
       ) : (
-      <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-black md:rounded-2xl">
-        {source.kind === "youtube" ? (
-          <iframe
-            src={`https://www.youtube-nocookie.com/embed/${source.id}?rel=0&modestbranding=1&playsinline=1`}
-            title={`${title} · full match`}
-            className="size-full"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowFullScreen
-          />
-        ) : null}
-      </div>
+        <YouTubeBigPlay id={source.id} title={`${title} · full match`} label={length ? `Full match · ${length}` : "Full match"} team={team} ariaLabel="Play full match" />
       )}
       <div className="flex items-center justify-between gap-3">
         <span className="text-sm font-medium text-[#5b6070] md:text-[15px]">Full match{length ? ` · ${length}` : ""}</span>
-        {source.kind === "youtube" ? (
-          <a
-            href={source.watchUrl}
-            target="_blank"
-            rel="noreferrer"
-            className={`inline-flex min-h-11 items-center text-sm font-semibold underline underline-offset-4 md:text-[15px] ${team.text}`}
-          >
-            Watch on YouTube ↗
-          </a>
-        ) : null}
       </div>
     </div>
   );
