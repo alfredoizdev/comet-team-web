@@ -4,7 +4,10 @@ import { ArrowLeft } from "lucide-react";
 import { CLUB_NAME, CREST_SRC, type Team } from "@/lib/teams";
 
 /** White header of the public team pages with a stripe in the team color. `backHref`/`backLabel` point one level up. */
-export function TeamHeader({ team, backHref, backLabel }: { team: Team; backHref: string; backLabel: string }) {
+export function TeamHeader({ team, backHref, backLabel, tintBack = false }: { team: Team; backHref: string; backLabel: string; tintBack?: boolean }) {
+  const backTint = team.slug === "girls"
+    ? "border-girls text-girls hover:bg-girls hover:text-white"
+    : "border-boys text-boys hover:bg-boys hover:text-white";
   return (
     <header className={`border-t-4 ${team.border} border-b border-b-[#ececf0] bg-white`}>
       <div className="mx-auto flex max-w-[1264px] items-center justify-between gap-4 px-5 py-3.5 sm:px-8 sm:py-5">
@@ -16,7 +19,7 @@ export function TeamHeader({ team, backHref, backLabel }: { team: Team; backHref
         </Link>
         <Link
           href={backHref}
-          className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-[#dcdce3] bg-white px-4 text-[15px] font-semibold transition hover:bg-[#f4f4f7] ${team.text}`}
+          className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border bg-white px-4 text-[15px] font-semibold transition ${tintBack ? backTint : `border-[#dcdce3] hover:bg-[#f4f4f7] ${team.text}`}`}
         >
           <ArrowLeft className="size-4" aria-hidden="true" />
           <span>{backLabel}</span>
