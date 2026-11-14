@@ -45,7 +45,7 @@ export function MatchCard({ match, team, more }: { match: PublicMatch; team: Tea
   return (
     <article className="flex flex-col gap-5 md:gap-8">
       <header className="flex flex-col gap-2 md:gap-2.5">
-        <span className={`hidden w-fit rounded-full bg-[#eef1f7] px-3 py-1 text-[13px] font-semibold md:inline-block ${team.text}`}>
+        <span className={`hidden w-fit rounded-full bg-[#eef1f7] px-3 py-1 text-[15px] font-semibold md:inline-block ${team.text}`}>
           {team.name}
           {match.opponent ? ` · vs ${match.opponent}` : ""}
         </span>
